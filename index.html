@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>강남대학교 수강신청 도우미</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Pretendard Font -->
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Pretendard', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'Roboto', 'sans-serif'],
+          },
+          colors: {
+            app: {
+              bg: '#121212',
+              card: '#1e1e1e',
+              border: '#2c2c2c',
+              subtext: '#8e8e93',
+              pointRed: '#e14436',
+              pointBlue: '#2563eb'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #000000;
+    }
+    * {
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      box-sizing: border-box;
+    }
+    input {
+      user-select: auto;
+    }
+    ::-webkit-scrollbar { width: 0px; height: 0px; }
+    
+    /* 시간표 셀 높이 확대 (가독성 확보) */
+    .tt-cell {
+      height: 48px;
+      min-height: 48px;
+    }
+
+    #dragHandle {
+      touch-action: none; /* 모바일에서 드래그 시 화면 스크롤 방지 */
+    }
+
+    /* 필터 칩 바: 좌우로 밀어서 이동 */
+    #filterChipContainer {
+      touch-action: pan-x;
+      overscroll-behavior-x: contain;
+      -webkit-overflow-scrolling: touch;
+      cursor: grab;
+    }
+    #filterChipContainer.is-dragging {
+      cursor: grabbing;
+    }
+  </style>
+</head>
+<!-- PC 화면에서도 모바일 비율을 유지하기 위해 중앙 정렬 및 프레임 추가 -->
+<body class="text-[#f5f5f7] font-sans h-screen flex justify-center overflow-hidden antialiased select-none">
+
+  <!-- 앱 메인 컨테이너 (최대 너비 고정) -->
+  <div class="w-full max-w-md bg-[#121212] h-full flex flex-col relative shadow-2xl sm:border-x border-[#2c2c2e]">
+
+    <!-- ================= TOP APP BAR ================= -->
+    <header class="bg-[#18181a] border-b border-[#2c2c2e] px-4 pt-2 pb-2 shrink-0 z-30">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <div class="w-7 h-7 rounded-lg bg-blue-600/30 text-blue-400 flex items-center justify-center text-xs font-black border border-blue-500/40">
+            K
+          </div>
+          <div>
+            <span class="text-[10px] text-blue-400 font-bold tracking-wider">KANGNAM UNIVERSITY</span>
+            <h1 class="text-xs font-bold text-slate-200">2026-2학기 모바일 수강신청</h1>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5">
+          <button id="btnResetAll" class="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#2c2c2e] hover:bg-[#3a3a3c] text-slate-300 transition flex items-center gap-1">
+            <i class="fa-solid fa-rotate-left text-[10px]"></i> 초기화
+          </button>
+        </div>
+      </div>
+
+      <!-- 2대 카테고리 세그먼트 -->
+      <div class="grid grid-cols-2 gap-1 bg-[#262629] p-1 rounded-xl mt-2 border border-[#343438]">
+        <button id="tabBrowse" class="py-1.5 text-xs font-bold rounded-lg transition bg-[#3a3a3c] text-white shadow-sm" onclick="switchCategory('browse')">
+          과목 조회
+        </button>
+        <button id="tabEnroll" class="py-1.5 text-xs font-medium rounded-lg transition text-slate-400 hover:text-white" onclick="switchCategory('enroll')">
+          수강신청
+        </button>
+      </div>
+
+      <!-- 학점 현황 및 상태 칩 -->
+      <div class="flex items-center justify-between mt-2 pt-1.5 border-t border-[#262629] text-[11px]">
+        <div class="flex items-center gap-2">
+          <span class="text-slate-400">신청 학점</span>
+          <span id="creditTotalBadge" class="font-extrabold text-blue-400 text-xs">0 / 19</span>
+          <span id="creditStatusMsg" class="text-[10px] text-amber-400 font-medium">최소 12학점 필요</span>
+        </div>
+        <div id="modeHelperTag" class="text-[10px] text-slate-400">
+          전체 개설 과목 탐색 모드
+        </div>
+      </div>
+    </header>
+
+    <!-- ================= TOP: 시간표 매트릭스 (드래그 조절 가능) ================= -->
+    <section id="topSection" style="height: 38vh; min-height: 180px;" class="bg-[#18181a] border-b border-[#2c2c2e] p-2 flex flex-col shrink-0 transition-none">
+      <div class="w-full h-full bg-[#121212] rounded-xl border border-[#2c2c2e] overflow-hidden flex flex-col">
+        <!-- 요일 헤더 -->
+        <div class="grid grid-cols-6 border-b border-[#2c2c2e] bg-[#1c1c1e] text-[10px] font-bold text-slate-400 text-center py-1.5 shrink-0">
+          <div>시간</div>
+          <div>월</div>
+          <div>화</div>
+          <div>수</div>
+          <div>목</div>
+          <div>금</div>
+        </div>
+        
+        <!-- 시간표 바디 -->
+        <div class="flex-1 overflow-y-auto" id="timetableScrollArea">
+          <div class="grid grid-cols-6 divide-x divide-[#242426] text-[10px]" id="timetableGridWrapper">
+            <!-- JS 동적 생성 -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= DRAG HANDLE (드래그 바) ================= -->
+    <div id="dragHandle" class="w-full h-6 bg-[#1c1c1e] flex items-center justify-center cursor-ns-resize border-b border-[#2c2c2e] shrink-0 hover:bg-[#242426] active:bg-[#2c2c2e] transition-colors z-20 relative">
+      <div class="w-12 h-1.5 bg-slate-600 rounded-full"></div>
+    </div>
+
+    <!-- ================= BOTTOM: 필터 & 리스트 영역 ================= -->
+    <section id="bottomSection" class="flex-1 flex flex-col min-h-0 bg-[#121212] relative z-10">
+      
+      <!-- 필터 칩 바 -->
+      <div class="px-3 py-2 bg-[#18181a] border-b border-[#262629] flex items-center gap-1.5 overflow-x-auto shrink-0 whitespace-nowrap scrollbar-hide" id="filterChipContainer">
+        <!-- 전공 선택 드롭다운 -->
+        <button id="majorSelectBtn" type="button" onclick="openMajorSheet()" class="bg-[#1e293b] text-[#38bdf8] border border-[#38bdf8] rounded-full pl-2.5 pr-2 py-1 text-[11px] font-bold outline-none cursor-pointer shrink-0 flex items-center gap-1 max-w-[210px]">
+          <span id="majorSelectLabel" class="truncate">자유전공학부</span>
+          <i class="fa-solid fa-chevron-down text-[8px] shrink-0"></i>
+        </button>
+        
+        <button id="btnFilterAll" class="filter-chip active px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#38bdf8]/10 text-[#38bdf8] border border-[#38bdf8]/50 shrink-0 transition" onclick="setCourseFilter('all', this)">전체</button>
+        <button class="filter-chip px-2.5 py-1 rounded-full text-[11px] font-medium bg-[#262629] text-slate-300 border border-[#343438] shrink-0 transition" onclick="setCourseFilter('기초교양', this)">기초교양</button>
+        <button class="filter-chip px-2.5 py-1 rounded-full text-[11px] font-medium bg-[#262629] text-slate-300 border border-[#343438] shrink-0 transition" onclick="setCourseFilter('전공기초', this)">전공기초</button>
+        <button class="filter-chip px-2.5 py-1 rounded-full text-[11px] font-medium bg-[#262629] text-slate-300 border border-[#343438] shrink-0 transition" onclick="setCourseFilter('전공선택', this)">전공선택</button>
+        <button class="filter-chip px-2.5 py-1 rounded-full text-[11px] font-medium bg-[#262629] text-slate-300 border border-[#343438] shrink-0 transition" onclick="setCourseFilter('전공필수', this)">전공필수</button>
+        <button class="filter-chip px-2.5 py-1 rounded-full text-[11px] font-medium bg-[#262629] text-slate-300 border border-[#343438] shrink-0 transition" onclick="setCourseFilter('전공탐색', this)">전공탐색</button>
+        
+        <!-- 균형교양 드롭다운 -->
+        <select id="gyunhyungSelectFilter" class="bg-[#262629] text-slate-300 border border-[#343438] rounded-full px-2.5 py-1 text-[11px] font-medium outline-none cursor-pointer shrink-0 transition" onchange="setGyunhyungFilter(this.value)">
+          <option value="none">균형교양 선택</option>
+          <option value="균형 1영역">균형 1영역</option>
+          <option value="균형 2영역">균형 2영역</option>
+          <option value="균형 3영역">균형 3영역</option>
+          <option value="균형 4영역">균형 4영역</option>
+          <option value="균형 5영역">균형 5영역</option>
+        </select>
+      </div>
+      
+      <!-- 검색 인풋 -->
+      <div class="px-3 py-1.5 bg-[#18181a] border-b border-[#262629] shrink-0">
+        <div class="relative w-full">
+          <input type="text" id="searchInput" placeholder="과목·교수 검색..." class="w-full bg-[#242426] text-white text-[11px] rounded-lg pl-7 pr-2 py-1.5 outline-none border border-[#343438] focus:border-blue-500">
+          <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2.5 text-[10px] text-slate-400"></i>
+        </div>
+      </div>
+
+      <!-- 과목 리스트 컨테이너 -->
+      <div class="flex-1 overflow-y-auto p-3 space-y-2.5" id="courseListContainer">
+        <!-- JS 렌더링 -->
+      </div>
+    </section>
+
+    <!-- ================= 전공 선택 바텀시트 (전공이 많아도 검색으로 찾기) ================= -->
+    <div id="majorSheetOverlay" class="absolute inset-0 z-[100] bg-black/70 backdrop-blur-sm flex flex-col justify-end transition-opacity duration-300 opacity-0 pointer-events-none hidden" onclick="if(event.target === this) closeMajorSheet()">
+      <div id="majorSheet" class="bg-[#1c1c1e] border-t border-[#343438] rounded-t-3xl p-4 text-white w-full h-[80%] flex flex-col transition-transform duration-300 translate-y-full">
+        <div class="w-10 h-1 bg-slate-600 rounded-full mx-auto mb-3 shrink-0"></div>
+        <div class="flex items-center justify-between mb-2 shrink-0">
+          <div>
+            <h3 class="text-base font-bold text-white">전공 선택</h3>
+            <p class="text-[10px] text-slate-500 mt-0.5">에브리타임 학부/전공 기준 · 균형교양은 모든 전공에서 공통으로 보여요</p>
+          </div>
+          <button onclick="closeMajorSheet()" class="w-8 h-8 rounded-full bg-[#2c2c2e] text-slate-300 flex items-center justify-center hover:bg-[#343438] transition">
+            <i class="fa-solid fa-xmark text-sm"></i>
+          </button>
+        </div>
+        <div class="relative mb-2 shrink-0">
+          <input type="text" id="majorSearchInput" oninput="renderMajorList(this.value)" placeholder="전공·학부 검색 (예: 경영, 가상현실)" class="w-full bg-[#242426] text-white text-[12px] rounded-lg pl-3 pr-2 py-2 outline-none border border-[#343438] focus:border-blue-500">
+        </div>
+        <div id="majorListContainer" class="flex-1 overflow-y-auto pb-4"></div>
+      </div>
+    </div>
+
+    <!-- ================= PLAN B 전용 모달 (버그 완전 수정) ================= -->
+    <div id="planBModalOverlay" class="absolute inset-0 z-[100] bg-black/70 backdrop-blur-sm flex flex-col justify-end transition-opacity duration-300 opacity-0 pointer-events-none hidden">
+      <!-- 팝업 컨테이너 애니메이션 안정화 -->
+      <div id="planBModalSheet" class="bg-[#1c1c1e] border-t border-[#343438] rounded-t-3xl p-5 text-white w-full max-h-[85vh] flex flex-col transition-transform duration-300 translate-y-full">
+        <div class="w-10 h-1 bg-slate-600 rounded-full mx-auto mb-3 shrink-0"></div>
+        
+        <div class="flex items-center justify-between mb-3 shrink-0">
+          <div>
+            <span class="text-[10px] font-extrabold text-amber-400 flex items-center gap-1">
+              <i class="fa-solid fa-bolt"></i> PLAN B ENGINE
+            </span>
+            <h3 class="text-base font-bold text-white mt-0.5" id="planBTargetTitle">수강 실패 대비 대체 추천</h3>
+          </div>
+          <button onclick="closePlanBModal()" class="w-8 h-8 rounded-full bg-[#2c2c2e] text-slate-300 flex items-center justify-center hover:bg-[#343438] transition">
+            <i class="fa-solid fa-xmark text-sm"></i>
+          </button>
+        </div>
+
+        <!-- 성향 선택 탭 -->
+        <div class="shrink-0">
+          <div class="text-[10px] text-slate-400 mb-1.5 font-bold">본인의 성향을 선택하세요:</div>
+          <div class="grid grid-cols-2 gap-2 bg-[#262629] p-1 rounded-xl mb-2 border border-[#343438] text-xs">
+            <button id="planBFilterVacation" class="py-2 flex items-center justify-center gap-1.5 rounded-lg font-bold bg-[#2563eb] text-white border border-[#3b82f6] transition" onclick="changePlanBPreference('vacation')">
+              <i class="fa-solid fa-calendar-check"></i> 공강 사수형
+            </button>
+            <button id="planBFilterCompact" class="py-2 flex items-center justify-center gap-1.5 rounded-lg font-medium text-slate-400 bg-transparent transition" onclick="changePlanBPreference('compact')">
+              <i class="fa-regular fa-clock"></i> 우주공강 회피형
+            </button>
+          </div>
+          <p id="planBHelperText" class="text-[10px] text-slate-400 mb-3 leading-tight">
+            안내: 공강을 깨지 않는 강의를 추천합니다.
+          </p>
+        </div>
+
+        <!-- 추천 목록 리스트 -->
+        <div id="planBRecommendations" class="flex-1 overflow-y-auto space-y-2 pb-5 scrollbar-hide">
+          <!-- JS 생성 -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 토스트 알림 -->
+    <div id="toast" class="absolute bottom-6 left-1/2 -translate-x-1/2 z-[110] bg-[#2c2c2e] text-white px-4 py-2.5 rounded-full text-xs font-semibold border border-[#3e3e42] shadow-2xl flex items-center gap-2 opacity-0 pointer-events-none transition-all duration-300">
+      <i id="toastIcon" class="fa-solid fa-circle-info text-blue-400"></i>
+      <span id="toastMsg">알림</span>
+    </div>
+
+  </div> <!-- End of Max Width Container -->
+
+  <!-- ================= JAVASCRIPT ================= -->
+  <script>
+    /* -----------------------------------------------------------
+       0. 드래그 바(Drag Handle) 크기 조절 로직
+       ----------------------------------------------------------- */
+    const dragHandle = document.getElementById('dragHandle');
+    const topSection = document.getElementById('topSection');
+    let isDragging = false;
+    let startY = 0;
+    let startHeight = 0;
+
+    function onDragStart(e) {
+      isDragging = true;
+      startY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+      startHeight = topSection.getBoundingClientRect().height;
+      document.body.style.cursor = 'ns-resize';
+    }
+
+    function onDragMove(e) {
+      if (!isDragging) return;
+      const currentY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+      const delta = currentY - startY;
+      let newHeight = startHeight + delta;
+      
+      if (newHeight < 150) newHeight = 150;
+      if (newHeight > window.innerHeight * 0.7) newHeight = window.innerHeight * 0.7;
+      
+      topSection.style.height = `${newHeight}px`;
+    }
+
+    function onDragEnd() {
+      isDragging = false;
+      document.body.style.cursor = 'default';
+    }
+
+    dragHandle.addEventListener('mousedown', onDragStart);
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('mouseup', onDragEnd);
+    
+    dragHandle.addEventListener('touchstart', onDragStart, { passive: true });
+    document.addEventListener('touchmove', onDragMove, { passive: false });
+    document.addEventListener('touchend', onDragEnd);
+
+    /* -----------------------------------------------------------
+       1. 마스터 과목 데이터베이스
+       ----------------------------------------------------------- */
+    const ALL_COURSES = [
+      // === 자유전공학부: 전공기초 (코너스톤 전용) ===
+      { id: 'C01', name: '코너스톤Ⅱ', prof: '이대연', deptCategory: '전공기초', code: 'AA04101-01', credits: 3, dayPeriods: [{ day: '월', periods: [7, 8, 9] }], timeDisplay: '(주)월7ab8ab9ab', room: '샬403', rating: 5.0, wishlist: 23, color: '#3b82f6' },
+      { id: 'C02', name: '코너스톤Ⅱ', prof: '정혜경', deptCategory: '전공기초', code: 'AA04101-02', credits: 3, dayPeriods: [{ day: '월', periods: [7, 8, 9] }], timeDisplay: '(주)월7ab8ab9ab', room: '샬309', rating: 4.8, wishlist: 28, color: '#3b82f6' },
+      { id: 'C03', name: '코너스톤Ⅱ', prof: '최호원', deptCategory: '전공기초', code: 'AA04101-03', credits: 3, dayPeriods: [{ day: '월', periods: [7, 8, 9] }], timeDisplay: '(주)월7ab8ab9ab', room: '샬310', rating: 4.7, wishlist: 25, color: '#3b82f6' },
+
+      // === 자유전공학부: 기초교양 ===
+      { id: 'S01', name: '신입생세미나Ⅱ', prof: '이대연', deptCategory: '기초교양', code: 'AA01601-01', credits: 1, dayPeriods: [{ day: '목', periods: [7, 8, 9] }], timeDisplay: '(주)목7ab8ab9ab', room: '샬304', rating: 4.9, wishlist: 23, color: '#0ea5e9', isLocked: true },
+      { id: 'S02', name: '신입생세미나Ⅱ', prof: '정혜경', deptCategory: '기초교양', code: 'AA01601-02', credits: 1, dayPeriods: [{ day: '목', periods: [7, 8, 9] }], timeDisplay: '(주)목7ab8ab9ab', room: '샬308', rating: 4.8, wishlist: 21, color: '#0ea5e9' },
+      { id: 'S03', name: '신입생세미나Ⅱ', prof: '최호원', deptCategory: '기초교양', code: 'AA01601-04', credits: 1, dayPeriods: [{ day: '목', periods: [7, 8, 9] }], timeDisplay: '(주)목7ab8ab9ab', room: '샬309', rating: 4.7, wishlist: 18, color: '#0ea5e9' },
+      { id: 'S04', name: '신입생세미나Ⅱ', prof: '김수정', deptCategory: '기초교양', code: 'AA01601-05', credits: 1, dayPeriods: [{ day: '목', periods: [7, 8, 9] }], timeDisplay: '(주)목7ab8ab9ab', room: '샬310', rating: 5.0, wishlist: 24, color: '#0ea5e9' },
+      
+      { id: 'CH01', name: '채플(이웃사랑)Ⅱ', prof: '윤승태', deptCategory: '기초교양', code: 'ND01604-01', credits: 0, dayPeriods: [{ day: '화', periods: [7] }], timeDisplay: '(주)화7ab', room: '우1 대강당', rating: 5.0, wishlist: 428, color: '#14b8a6' },
+      
+      { id: 'AI01', name: 'Academic English L&S(Intro)', prof: '김세현', deptCategory: '기초교양', code: 'ND01610-27', credits: 2, dayPeriods: [{ day: '월', periods: [4, 5] }], timeDisplay: '(주)월4ab5ab', room: '샬502', rating: 4.8, wishlist: 14, color: '#f59e0b' },
+      { id: 'AI02', name: 'Academic English L&S(Intro)', prof: 'CLAVIN PETER', deptCategory: '기초교양', code: 'ND01610-28', credits: 2, dayPeriods: [{ day: '월', periods: [4, 5] }], timeDisplay: '(주)월4ab5ab', room: '샬503', rating: 4.6, wishlist: 19, color: '#f59e0b' },
+      
+      { id: 'AE01', name: 'Academic English L&S(Intermediate)', prof: '양희진', deptCategory: '기초교양', code: 'ND01611-37', credits: 2, dayPeriods: [{ day: '화', periods: [1, 2] }], timeDisplay: '(주)화1ab2ab', room: '샬503', rating: 4.5, wishlist: 11, color: '#d97706' },
+      { id: 'AE02', name: 'Academic English L&S(Intermediate)', prof: '김세현', deptCategory: '기초교양', code: 'ND01611-38', credits: 2, dayPeriods: [{ day: '화', periods: [1, 2] }], timeDisplay: '(주)화1ab2ab', room: '샬502', rating: 4.7, wishlist: 15, color: '#d97706' },
+      { id: 'AE03', name: 'Academic English L&S(Intermediate)', prof: 'CLAVIN PETER', deptCategory: '기초교양', code: 'ND01611-39', credits: 2, dayPeriods: [{ day: '화', periods: [1, 2] }], timeDisplay: '(주)화1ab2ab', room: '샬709', rating: 4.6, wishlist: 9, color: '#d97706' },
+      { id: 'AE04', name: 'Academic English L&S(Intermediate)', prof: 'SWANSON TODD ALLEN', deptCategory: '기초교양', code: 'ND01611-40', credits: 2, dayPeriods: [{ day: '월', periods: [4, 5] }], timeDisplay: '(주)월4ab5ab', room: '샬802', rating: 4.9, wishlist: 18, color: '#d97706' },
+      
+      { id: 'P01', name: '컴퓨터프로그래밍', prof: '서성현', deptCategory: '기초교양', code: 'ND01601-01', credits: 3, dayPeriods: [{ day: '수', periods: [4, 5, 6] }], timeDisplay: '(주)수4ab5ab6ab', room: '샬211', rating: 4.5, wishlist: 38, color: '#8b5cf6' },
+      { id: 'P02', name: '컴퓨터프로그래밍', prof: '이진영', deptCategory: '기초교양', code: 'ND01601-14', credits: 3, dayPeriods: [{ day: '목', periods: [1, 2, 3] }], timeDisplay: '(주)목1ab2ab3ab', room: '이101', rating: 4.6, wishlist: 28, color: '#8b5cf6' },
+      { id: 'P03', name: '컴퓨터프로그래밍', prof: '신정화', deptCategory: '기초교양', code: 'ND01601-15', credits: 3, dayPeriods: [{ day: '목', periods: [1, 2, 3] }], timeDisplay: '(주)목1ab2ab3ab', room: '이103', rating: 4.4, wishlist: 18, color: '#8b5cf6' },
+      
+      { id: 'V01', name: '사회봉사', prof: '한서연', deptCategory: '기초교양', code: 'ND01603-01', credits: 1, dayPeriods: [{ day: '월', periods: [6] }], timeDisplay: '(주)월6ab', room: '샬709', rating: 4.9, wishlist: 53, color: '#ec4899' },
+      { id: 'V02', name: '사회봉사', prof: '조주희', deptCategory: '기초교양', code: 'ND01603-02', credits: 1, dayPeriods: [{ day: '화', periods: [3] }], timeDisplay: '(주)화3ab', room: '샬806', rating: 4.8, wishlist: 55, color: '#ec4899' },
+      { id: 'V03', name: '사회봉사', prof: '조주희', deptCategory: '기초교양', code: 'ND01603-03', credits: 1, dayPeriods: [{ day: '목', periods: [1] }], timeDisplay: '(주)목1ab', room: '샬806', rating: 4.7, wishlist: 14, color: '#ec4899' },
+      
+      { id: 'M01', name: '공학수학', prof: '최호원', deptCategory: '기초교양', code: 'ND01602-06', credits: 3, dayPeriods: [{ day: '월', periods: [1, 2, 3] }], timeDisplay: '(주)월1ab2ab3ab', room: '경408-2', rating: 4.6, wishlist: 13, color: '#ef4444' },
+      
+      { id: 'T01', name: 'KNU전공탐색Ⅱ', prof: '원지영', deptCategory: '기초교양', code: 'AA02401-00', credits: 2, dayPeriods: [{ day: '수', periods: [7, 8, 9] }], timeDisplay: '(주)수7ab8ab9ab', room: '경101', rating: 5.0, wishlist: 85, color: '#f97316' },
+
+      // === ICT융합공학부 (공과대학) ===
+      { id: 'ICT01', major: 'ICT융합공학부 (공과대학)', name: '인성과학문II', prof: '김태권', deptCategory: '기초교양', grade: '1', code: 'EF01601-01', credits: 0, dayPeriods: [{ day: '금', periods: [9] }], timeDisplay: '(주)금9ab', room: '', rating: 5.0, wishlist: 17, color: '#0ea5e9' },
+      { id: 'ICT02', major: 'ICT융합공학부 (공과대학)', name: '인성과학문II', prof: '배성근', deptCategory: '기초교양', grade: '1', code: 'EF01601-02', credits: 0, dayPeriods: [{ day: '금', periods: [9] }], timeDisplay: '(주)금9ab', room: '', rating: 0.0, wishlist: 3, color: '#0ea5e9' },
+      { id: 'ICT03', major: 'ICT융합공학부 (공과대학)', name: '인성과학문II', prof: '강현우', deptCategory: '기초교양', grade: '1', code: 'EF01601-03', credits: 0, dayPeriods: [{ day: '금', periods: [9] }], timeDisplay: '(주)금9ab', room: '', rating: 5.0, wishlist: 2, color: '#0ea5e9' },
+      { id: 'ICT04', major: 'ICT융합공학부 (공과대학)', name: '인성과학문II', prof: '최웅', deptCategory: '기초교양', grade: '1', code: 'EF01601-04', credits: 0, dayPeriods: [{ day: '금', periods: [9] }], timeDisplay: '(주)금9ab', room: '', rating: 0.0, wishlist: 2, color: '#0ea5e9' },
+      { id: 'ICT05', major: 'ICT융합공학부 (공과대학)', name: '인성과학문II', prof: '최권택', deptCategory: '기초교양', grade: '1', code: 'EF01601-05', credits: 0, dayPeriods: [{ day: '금', periods: [9] }], timeDisplay: '(주)금9ab', room: '', rating: 5.0, wishlist: 0, color: '#0ea5e9' },
+      { id: 'ICT06', major: 'ICT융합공학부 (공과대학)', name: '인성과학문II', prof: '김창현', deptCategory: '기초교양', grade: '1', code: 'EF01601-06', credits: 0, dayPeriods: [{ day: '금', periods: [9] }], timeDisplay: '(주)금9ab', room: '', rating: 0.0, wishlist: 1, color: '#0ea5e9' },
+      { id: 'ICT07', major: 'ICT융합공학부 (공과대학)', name: '인성과학문II', prof: '이채준', deptCategory: '기초교양', grade: '1', code: 'EF01601-07', credits: 0, dayPeriods: [{ day: '금', periods: [9] }], timeDisplay: '(주)금9ab', room: '', rating: 0.0, wishlist: 4, color: '#0ea5e9' },
+
+      // === Wel-Tech융합전공 (복지융합대학) ===
+      { id: 'WT01', major: 'Wel-Tech융합전공 (복지융합대학)', name: 'VR메이커스페이스', prof: '최웅', deptCategory: '전공선택', grade: '1', code: 'BD14101-00', credits: 3, dayPeriods: [{ day: '월', periods: [7, 8, 9] }], timeDisplay: '(주)월7ab8ab9ab', room: '심산220', rating: 5.0, wishlist: 5, color: '#8b5cf6' },
+      { id: 'WT02', major: 'Wel-Tech융합전공 (복지융합대학)', name: '디지털복지기술', prof: '배성근', deptCategory: '전공선택', grade: '2', code: 'BD14201-00', credits: 3, dayPeriods: [{ day: '금', periods: [1, 2, 3] }], timeDisplay: '(주)금1ab2ab3ab', room: '경208', rating: 4.0, wishlist: 9, color: '#3b82f6' },
+
+      // === 가상현실전공 (ICT융합공학부) ===
+      { id: 'VR01', major: '가상현실전공 (ICT융합공학부)', name: '인성과학문IV', prof: '배성근', deptCategory: '기초교양', grade: '2', code: 'EF21601-01', credits: 0, dayPeriods: [{ day: '금', periods: [8] }], timeDisplay: '(주)금8ab', room: '', rating: 4.0, wishlist: 5, color: '#0ea5e9' },
+      { id: 'VR02', major: '가상현실전공 (ICT융합공학부)', name: '인성과학문IV', prof: '강현우', deptCategory: '기초교양', grade: '2', code: 'EF21601-02', credits: 0, dayPeriods: [{ day: '금', periods: [8] }], timeDisplay: '(주)금8ab', room: '', rating: 0.0, wishlist: 3, color: '#0ea5e9' },
+      { id: 'VR03', major: '가상현실전공 (ICT융합공학부)', name: '인성과학문IV', prof: '최웅', deptCategory: '기초교양', grade: '2', code: 'EF21601-03', credits: 0, dayPeriods: [{ day: '금', periods: [8] }], timeDisplay: '(주)금8ab', room: '', rating: 0.0, wishlist: 6, color: '#0ea5e9' },
+      { id: 'VR04', major: '가상현실전공 (ICT융합공학부)', name: '진로지도상담II', prof: '강현우', deptCategory: '전공선택', grade: '3', code: 'EF24202-02', credits: 0, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 1, color: '#64748b' },
+      { id: 'VR05', major: '가상현실전공 (ICT융합공학부)', name: '진로지도상담II', prof: '최웅', deptCategory: '전공선택', grade: '3', code: 'EF24202-03', credits: 0, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 1, color: '#64748b' },
+      { id: 'VR06', major: '가상현실전공 (ICT융합공학부)', name: '게임프로그래밍', prof: '김영호', deptCategory: '전공선택', grade: '3', code: 'EF24203-01', credits: 3, dayPeriods: [{ day: '화', periods: [4, 5, 6] }], timeDisplay: '(주)화4ab5ab6ab', room: '이312', rating: 0.0, wishlist: 30, color: '#3b82f6' },
+      { id: 'VR07', major: '가상현실전공 (ICT융합공학부)', name: '디지털트윈프로그래밍', prof: '최웅', deptCategory: '전공선택', grade: '3', code: 'EF24204-00', credits: 3, dayPeriods: [{ day: '월', periods: [1, 2, 3] }], timeDisplay: '(주)월1ab2ab3ab', room: '후B103', rating: 3.0, wishlist: 22, color: '#8b5cf6' },
+      { id: 'VR08', major: '가상현실전공 (ICT융합공학부)', name: '실감디지털콘텐츠기획', prof: '강현우', deptCategory: '전공선택', grade: '3', code: 'EF24205-00', credits: 3, dayPeriods: [{ day: '수', periods: [7, 8, 9] }], timeDisplay: '(주)수7ab8ab9ab', room: '이302', rating: 4.5, wishlist: 19, color: '#ec4899' },
+      { id: 'VR09', major: '가상현실전공 (ICT융합공학부)', name: '인터랙티브미디어개발', prof: '배성근', deptCategory: '전공선택', grade: '3', code: 'EF24206-01', credits: 3, dayPeriods: [{ day: '화', periods: [1, 2, 3] }], timeDisplay: '(주)화1ab2ab3ab', room: '이302', rating: 4.5, wishlist: 25, color: '#f59e0b' },
+      { id: 'VR10', major: '가상현실전공 (ICT융합공학부)', name: '인터랙티브미디어개발', prof: '배성근', deptCategory: '전공선택', grade: '3', code: 'EF24206-02', credits: 3, dayPeriods: [{ day: '수', periods: [4, 5, 6] }], timeDisplay: '(주)수4ab5ab6ab', room: '이311', rating: 4.5, wishlist: 31, color: '#f59e0b' },
+      { id: 'VR11', major: '가상현실전공 (ICT융합공학부)', name: '공학수학', prof: '신수연', deptCategory: '기초교양', grade: '3/4/2', code: 'ND01602-07', credits: 3, dayPeriods: [{ day: '수', periods: [1, 2, 3] }], timeDisplay: '(주)수1ab2ab3ab', room: '천216', rating: 4.0, wishlist: 39, color: '#ef4444' },
+      { id: 'VR12', major: '가상현실전공 (ICT융합공학부)', name: '진로지도상담IV', prof: '배성근', deptCategory: '전공선택', grade: '4', code: 'EF24207-01', credits: 0, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 0, color: '#64748b' },
+      { id: 'VR13', major: '가상현실전공 (ICT융합공학부)', name: '진로지도상담IV', prof: '강현우', deptCategory: '전공선택', grade: '4', code: 'EF24207-02', credits: 0, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 1, color: '#64748b' },
+      { id: 'VR14', major: '가상현실전공 (ICT융합공학부)', name: '진로지도상담IV', prof: '최웅', deptCategory: '전공선택', grade: '4', code: 'EF24207-03', credits: 0, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 0, color: '#64748b' },
+      { id: 'VR15', major: '가상현실전공 (ICT융합공학부)', name: '현장실습(장기)I', prof: '최인엽', deptCategory: '전공선택', grade: '4', code: 'EF24208-00', credits: 3, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 0, color: '#14b8a6' },
+      { id: 'VR16', major: '가상현실전공 (ICT융합공학부)', name: '현장실습(장기)II', prof: '최인엽', deptCategory: '전공선택', grade: '4', code: 'EF24209-00', credits: 3, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 0, color: '#14b8a6' },
+      { id: 'VR17', major: '가상현실전공 (ICT융합공학부)', name: '현장실습(장기)III', prof: '최인엽', deptCategory: '전공선택', grade: '4', code: 'EF24210-00', credits: 3, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 0, color: '#14b8a6' },
+      { id: 'VR18', major: '가상현실전공 (ICT융합공학부)', name: '현장실습(장기)IV', prof: '최인엽', deptCategory: '전공선택', grade: '4', code: 'EF24211-00', credits: 3, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 0, color: '#14b8a6' },
+      { id: 'VR19', major: '가상현실전공 (ICT융합공학부)', name: '캡스톤디자인(VR)II', prof: '배성근', deptCategory: '전공선택', grade: '4', code: 'EF24213-00', credits: 3, dayPeriods: [{ day: '목', periods: [1, 2, 3] }], timeDisplay: '(주)목1ab2ab3ab', room: '이109', rating: 5.0, wishlist: 16, color: '#f97316' },
+      { id: 'VR20', major: '가상현실전공 (ICT융합공학부)', name: '졸업종합평가', prof: '최인엽', deptCategory: '전공필수', grade: '4', code: 'EF24301-00', credits: 0, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 7, color: '#e11d48' },
+      { id: 'VR21', major: '가상현실전공 (ICT융합공학부)', name: '기업실무인턴십(단기)', prof: '최인엽', deptCategory: '전공선택', grade: '3', code: 'EF24215-00', credits: 3, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 1, color: '#06b6d4' },
+      { id: 'VR22', major: '가상현실전공 (ICT융합공학부)', name: '기업실무인턴십(장기)I', prof: '최인엽', deptCategory: '전공선택', grade: '3', code: 'EF24216-00', credits: 3, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 1, color: '#06b6d4' },
+      { id: 'VR23', major: '가상현실전공 (ICT융합공학부)', name: '기업실무인턴십(장기)II', prof: '최인엽', deptCategory: '전공선택', grade: '3', code: 'EF24217-00', credits: 3, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 1, color: '#06b6d4' },
+      { id: 'VR24', major: '가상현실전공 (ICT융합공학부)', name: '기업실무인턴십(장기)III', prof: '최인엽', deptCategory: '전공선택', grade: '3', code: 'EF24218-00', credits: 3, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 1, color: '#06b6d4' },
+      { id: 'VR25', major: '가상현실전공 (ICT융합공학부)', name: '기업실무인턴십(장기)IV', prof: '최인엽', deptCategory: '전공선택', grade: '3', code: 'EF24219-00', credits: 3, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 1, color: '#06b6d4' },
+
+      // === 건축공학전공 (부동산건설학부) ===
+      { id: 'ARCH01', major: '건축공학전공 (부동산건설학부)', name: '공학수학', prof: '신수연', deptCategory: '기초교양', grade: '3/4/2', code: 'ND01602-07', credits: 3, dayPeriods: [{ day: '수', periods: [1, 2, 3] }], timeDisplay: '(주)수1ab2ab3ab', room: '천216', rating: 4.0, wishlist: 39, color: '#ef4444' },
+      { id: 'ARCH02', major: '건축공학전공 (부동산건설학부)', name: '인성과학문IV', prof: '최연희', deptCategory: '기초교양', grade: '2', code: 'ED31601-00', credits: 0, dayPeriods: [{ day: '금', periods: [8] }], timeDisplay: '(주)금8ab', room: '', rating: 0.0, wishlist: 18, color: '#0ea5e9' },
+      { id: 'ARCH03', major: '건축공학전공 (부동산건설학부)', name: '전공세미나II', prof: '하상수', deptCategory: '전공탐색', grade: '2', code: 'ED32401-01', credits: 1, dayPeriods: [{ day: '화', periods: [7, 8, 9] }], timeDisplay: '(주)화7ab8ab9ab', room: '경401', rating: 0.0, wishlist: 12, color: '#06b6d4' },
+      { id: 'ARCH04', major: '건축공학전공 (부동산건설학부)', name: '전공세미나II', prof: '박종진', deptCategory: '전공탐색', grade: '2', code: 'ED32401-02', credits: 1, dayPeriods: [{ day: '화', periods: [7, 8] }], timeDisplay: '(주)화7ab8a', room: '이410', rating: 0.0, wishlist: 15, color: '#06b6d4' },
+      { id: 'ARCH05', major: '건축공학전공 (부동산건설학부)', name: '건축적산학', prof: '장예은', deptCategory: '전공선택', grade: '2', code: 'ED34201-01', credits: 3, dayPeriods: [{ day: '월', periods: [1, 2, 3] }], timeDisplay: '(주)월1ab2ab3ab', room: '이B104', rating: 0.0, wishlist: 41, color: '#3b82f6' },
+      { id: 'ARCH06', major: '건축공학전공 (부동산건설학부)', name: '건축적산학', prof: '장예은', deptCategory: '전공선택', grade: '2', code: 'ED34201-02', credits: 3, dayPeriods: [{ day: '화', periods: [1, 2, 3] }], timeDisplay: '(주)화1ab2ab3ab', room: '이B104', rating: 0.0, wishlist: 36, color: '#3b82f6' },
+      { id: 'ARCH07', major: '건축공학전공 (부동산건설학부)', name: '건축환경디자인', prof: '최연희', deptCategory: '전공선택', grade: '2', code: 'ED34202-00', credits: 3, dayPeriods: [{ day: '화', periods: [4, 5, 6] }], timeDisplay: '(주)화4ab5ab6ab', room: '경408-1', rating: 0.0, wishlist: 42, color: '#8b5cf6' },
+      { id: 'ARCH08', major: '건축공학전공 (부동산건설학부)', name: '건축조형', prof: '박종진', deptCategory: '전공선택', grade: '2', code: 'ED34203-01', credits: 3, dayPeriods: [{ day: '월', periods: [6, 7, 8, 9] }], timeDisplay: '(주)월6ab7ab8ab9ab', room: '이102', rating: 0.0, wishlist: 32, color: '#ec4899' },
+      { id: 'ARCH09', major: '건축공학전공 (부동산건설학부)', name: '건축조형', prof: '박종진', deptCategory: '전공선택', grade: '2', code: 'ED34203-02', credits: 3, dayPeriods: [{ day: '목', periods: [1, 2, 3, 4] }], timeDisplay: '(주)목1ab2ab3ab4ab', room: '이102', rating: 0.0, wishlist: 12, color: '#ec4899' },
+      { id: 'ARCH10', major: '건축공학전공 (부동산건설학부)', name: '건축설계스튜디오II', prof: '박우평', deptCategory: '전공선택', grade: '2', code: 'ED34204-02', credits: 3, dayPeriods: [{ day: '수', periods: [4, 5, 6, 7, 8] }], timeDisplay: '(주)수4ab5ab6ab7ab8ab', room: '이B103', rating: 0.0, wishlist: 23, color: '#f59e0b' },
+      { id: 'ARCH11', major: '건축공학전공 (부동산건설학부)', name: '건축구조역학', prof: '하상수', deptCategory: '전공선택', grade: '2', code: 'ED34205-01', credits: 3, dayPeriods: [{ day: '수', periods: [1, 2, 3] }], timeDisplay: '(주)수1ab2ab3ab', room: '경401', rating: 0.0, wishlist: 14, color: '#14b8a6' },
+      { id: 'ARCH12', major: '건축공학전공 (부동산건설학부)', name: '건축구조역학', prof: '김경진', deptCategory: '전공선택', grade: '2', code: 'ED34205-02', credits: 3, dayPeriods: [{ day: '수', periods: [1, 2, 3] }], timeDisplay: '(주)수1ab2ab3ab', room: '이B102', rating: 0.0, wishlist: 29, color: '#14b8a6' },
+      { id: 'ARCH13', major: '건축공학전공 (부동산건설학부)', name: '채플(행복나눔)IV', prof: '윤승태', deptCategory: '기초교양', grade: '2', code: 'ND01609-02', credits: 0, dayPeriods: [{ day: '목', periods: [7] }], timeDisplay: '(주)목7ab', room: '우1 대강당', rating: 5.0, wishlist: 596, color: '#14b8a6' },
+      { id: 'ARCH14', major: '건축공학전공 (부동산건설학부)', name: '건축법규', prof: '정창원', deptCategory: '전공선택', grade: '3', code: 'ED34206-00', credits: 3, dayPeriods: [{ day: '화', periods: [4, 5, 6] }], timeDisplay: '(주)화4ab5ab6ab', room: '경408-2', rating: 0.0, wishlist: 40, color: '#f97316' },
+      { id: 'ARCH15', major: '건축공학전공 (부동산건설학부)', name: '철골구조', prof: '하상수', deptCategory: '전공선택', grade: '3', code: 'ED34208-00', credits: 3, dayPeriods: [{ day: '화', periods: [1, 2, 3] }], timeDisplay: '(주)화1ab2ab3ab', room: '경309', rating: 0.0, wishlist: 19, color: '#6366f1' },
+      { id: 'ARCH16', major: '건축공학전공 (부동산건설학부)', name: '진로지도상담II', prof: '박종진', deptCategory: '전공선택', grade: '3', code: 'ED34209-03', credits: 0, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 6, color: '#64748b' },
+      { id: 'ARCH17', major: '건축공학전공 (부동산건설학부)', name: '진로지도상담II', prof: '최연희', deptCategory: '전공선택', grade: '3', code: 'ED34209-04', credits: 0, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 0, color: '#64748b' },
+      { id: 'ARCH18', major: '건축공학전공 (부동산건설학부)', name: '건축설계스튜디오IV', prof: '최연희', deptCategory: '전공선택', grade: '3', code: 'ED34210-00', credits: 3, dayPeriods: [{ day: '수', periods: [4, 5, 6, 7, 8] }], timeDisplay: '(주)수4ab5ab6ab7ab8ab', room: '경408-1', rating: 0.0, wishlist: 9, color: '#d97706' },
+      { id: 'ARCH19', major: '건축공학전공 (부동산건설학부)', name: '건축계획', prof: '박종진', deptCategory: '전공선택', grade: '4', code: 'ED34211-00', credits: 3, dayPeriods: [{ day: '수', periods: [1, 2, 3] }], timeDisplay: '(주)수1ab2ab3ab', room: '경408-1', rating: 0.0, wishlist: 11, color: '#3b82f6' },
+      { id: 'ARCH20', major: '건축공학전공 (부동산건설학부)', name: '진로지도상담IV', prof: '이성찬', deptCategory: '전공선택', grade: '4', code: 'ED34213-01', credits: 0, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 2, color: '#64748b' },
+      { id: 'ARCH21', major: '건축공학전공 (부동산건설학부)', name: '건축종합설계II', prof: '박종진', deptCategory: '전공선택', grade: '4', code: 'ED34219-00', credits: 3, dayPeriods: [{ day: '수', periods: [4, 5, 6, 7, 8] }], timeDisplay: '(주)수4ab5ab6ab7ab8ab', room: '이303', rating: 0.0, wishlist: 14, color: '#8b5cf6' },
+      { id: 'ARCH22', major: '건축공학전공 (부동산건설학부)', name: '건축음향설계', prof: '이성찬', deptCategory: '전공선택', grade: '4', code: 'ED34220-00', credits: 3, dayPeriods: [{ day: '월', periods: [4, 5, 6] }], timeDisplay: '(주)월4ab5ab6ab', room: '경408-2', rating: 0.0, wishlist: 28, color: '#ec4899' },
+
+      // === 경영학전공 (글로벌경영학부) ===
+      { id: 'BIZ01', major: '경영학전공 (글로벌경영학부)', name: '인성과학문IV', prof: '윤종수', deptCategory: '기초교양', grade: '2', code: 'CC11601-01', credits: 0, dayPeriods: [{ day: '금', periods: [8] }], timeDisplay: '(주)금8ab', room: '', rating: 0.0, wishlist: 13, color: '#0ea5e9' },
+      { id: 'BIZ02', major: '경영학전공 (글로벌경영학부)', name: '인성과학문IV', prof: '고인곤', deptCategory: '기초교양', grade: '2', code: 'CC11601-02', credits: 0, dayPeriods: [{ day: '금', periods: [8] }], timeDisplay: '(주)금8ab', room: '', rating: 5.0, wishlist: 7, color: '#0ea5e9' },
+      { id: 'BIZ03', major: '경영학전공 (글로벌경영학부)', name: '인성과학문IV', prof: '박종혁', deptCategory: '기초교양', grade: '2', code: 'CC11601-03', credits: 0, dayPeriods: [{ day: '금', periods: [8] }], timeDisplay: '(주)금8ab', room: '', rating: 5.0, wishlist: 8, color: '#0ea5e9' },
+      { id: 'BIZ04', major: '경영학전공 (글로벌경영학부)', name: '인성과학문IV', prof: '한준구', deptCategory: '기초교양', grade: '2', code: 'CC11601-04', credits: 0, dayPeriods: [{ day: '금', periods: [8] }], timeDisplay: '(주)금8ab', room: '', rating: 0.0, wishlist: 9, color: '#0ea5e9' },
+      { id: 'BIZ05', major: '경영학전공 (글로벌경영학부)', name: '인성과학문IV', prof: '권오진', deptCategory: '기초교양', grade: '2', code: 'CC11601-05', credits: 0, dayPeriods: [{ day: '금', periods: [8] }], timeDisplay: '(주)금8ab', room: '', rating: 5.0, wishlist: 12, color: '#0ea5e9' },
+      { id: 'BIZ06', major: '경영학전공 (글로벌경영학부)', name: '인성과학문IV', prof: '허경선', deptCategory: '기초교양', grade: '2', code: 'CC11601-06', credits: 0, dayPeriods: [{ day: '금', periods: [8] }], timeDisplay: '(주)금8ab', room: '', rating: 5.0, wishlist: 6, color: '#0ea5e9' },
+      { id: 'BIZ07', major: '경영학전공 (글로벌경영학부)', name: '인성과학문IV', prof: '강민', deptCategory: '기초교양', grade: '2', code: 'CC11601-07', credits: 0, dayPeriods: [{ day: '금', periods: [8] }], timeDisplay: '(주)금8ab', room: '', rating: 5.0, wishlist: 11, color: '#0ea5e9' },
+      { id: 'BIZ08', major: '경영학전공 (글로벌경영학부)', name: '인성과학문IV', prof: '이지은', deptCategory: '기초교양', grade: '2', code: 'CC11601-08', credits: 0, dayPeriods: [{ day: '금', periods: [8] }], timeDisplay: '(주)금8ab', room: '', rating: 0.0, wishlist: 7, color: '#0ea5e9' },
+      { id: 'BIZ09', major: '경영학전공 (글로벌경영학부)', name: '인성과학문IV', prof: '이남경', deptCategory: '기초교양', grade: '2', code: 'CC11601-09', credits: 0, dayPeriods: [{ day: '금', periods: [8] }], timeDisplay: '(주)금8ab', room: '', rating: 0.0, wishlist: 5, color: '#0ea5e9' },
+      { id: 'BIZ10', major: '경영학전공 (글로벌경영학부)', name: 'e-비즈니스', prof: '임관빈', deptCategory: '전공선택', grade: '3', code: 'CC14201-01', credits: 3, dayPeriods: [{ day: '수', periods: [7, 8, 9] }], timeDisplay: '(주)수7ab8ab9ab', room: '샬404', rating: 5.0, wishlist: 63, color: '#3b82f6' },
+      { id: 'BIZ11', major: '경영학전공 (글로벌경영학부)', name: 'e-비즈니스', prof: '조숙현', deptCategory: '전공선택', grade: '3', code: 'CC14201-02', credits: 3, dayPeriods: [{ day: '목', periods: [1, 2, 3] }], timeDisplay: '(주)목1ab2ab3ab', room: '샬411', rating: 0.0, wishlist: 46, color: '#3b82f6' },
+      { id: 'BIZ12', major: '경영학전공 (글로벌경영학부)', name: 'e-비즈니스', prof: '조숙현', deptCategory: '전공선택', grade: '3', code: 'CC14201-03', credits: 3, dayPeriods: [{ day: '목', periods: [4, 5, 6] }], timeDisplay: '(주)목4ab5ab6ab', room: '샬411', rating: 0.0, wishlist: 38, color: '#3b82f6' },
+      { id: 'BIZ13', major: '경영학전공 (글로벌경영학부)', name: '경영전략', prof: '한준구', deptCategory: '전공선택', grade: '3', code: 'CC14202-01', credits: 3, dayPeriods: [{ day: '월', periods: [7, 8, 9] }], timeDisplay: '(주)월7ab8ab9ab', room: '샬204', rating: 4.0, wishlist: 39, color: '#8b5cf6' },
+      { id: 'BIZ14', major: '경영학전공 (글로벌경영학부)', name: '경영전략', prof: '한준구', deptCategory: '전공선택', grade: '3', code: 'CC14202-02', credits: 3, dayPeriods: [{ day: '화', periods: [5, 6] }, { day: '목', periods: [4, 5] }], timeDisplay: '(주)화5b6ab,목4ab5a', room: '샬204', rating: 4.0, wishlist: 27, color: '#8b5cf6' },
+      { id: 'BIZ15', major: '경영학전공 (글로벌경영학부)', name: '품질경영', prof: '박응석', deptCategory: '전공선택', grade: '3', code: 'CC14203-01', credits: 3, dayPeriods: [{ day: '월', periods: [7, 8, 9] }], timeDisplay: '(주)월7ab8ab9ab', room: '샬408', rating: 0.0, wishlist: 56, color: '#ec4899' },
+      { id: 'BIZ16', major: '경영학전공 (글로벌경영학부)', name: '품질경영', prof: '이은지', deptCategory: '전공선택', grade: '3', code: 'CC14203-02', credits: 3, dayPeriods: [{ day: '금', periods: [4, 5, 6] }], timeDisplay: '(주)금4ab5ab6ab', room: '샬403', rating: 0.0, wishlist: 38, color: '#ec4899' },
+      { id: 'BIZ17', major: '경영학전공 (글로벌경영학부)', name: '경영의사결정게임', prof: '한경수', deptCategory: '전공선택', grade: '3', code: 'CC14204-01', credits: 3, dayPeriods: [{ day: '화', periods: [7, 8, 9] }], timeDisplay: '(주)화7ab8ab9ab', room: '샬209', rating: 0.0, wishlist: 33, color: '#f59e0b' },
+      { id: 'BIZ18', major: '경영학전공 (글로벌경영학부)', name: '경영의사결정게임', prof: '한경수', deptCategory: '전공선택', grade: '3', code: 'CC14204-02', credits: 3, dayPeriods: [{ day: '목', periods: [4, 5, 6] }], timeDisplay: '(주)목4ab5ab6ab', room: '샬209', rating: 0.0, wishlist: 27, color: '#f59e0b' },
+      { id: 'BIZ19', major: '경영학전공 (글로벌경영학부)', name: '진로지도상담II', prof: '고인곤', deptCategory: '전공선택', grade: '3', code: 'CC14205-02', credits: 0, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 1, color: '#64748b' },
+      { id: 'BIZ20', major: '경영학전공 (글로벌경영학부)', name: '진로지도상담II', prof: '한준구', deptCategory: '전공선택', grade: '3', code: 'CC14205-04', credits: 0, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 3, color: '#64748b' },
+      { id: 'BIZ21', major: '경영학전공 (글로벌경영학부)', name: '진로지도상담II', prof: '권오진', deptCategory: '전공선택', grade: '3', code: 'CC14205-05', credits: 0, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 2, color: '#64748b' },
+      { id: 'BIZ22', major: '경영학전공 (글로벌경영학부)', name: '진로지도상담II', prof: '강민', deptCategory: '전공선택', grade: '3', code: 'CC14205-07', credits: 0, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 2, color: '#64748b' },
+      { id: 'BIZ23', major: '경영학전공 (글로벌경영학부)', name: '진로지도상담II', prof: '이지은', deptCategory: '전공선택', grade: '3', code: 'CC14205-08', credits: 0, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 0, color: '#64748b' },
+      { id: 'BIZ24', major: '경영학전공 (글로벌경영학부)', name: '투자의실제', prof: '강민', deptCategory: '전공선택', grade: '3', code: 'CC14206-01', credits: 3, dayPeriods: [{ day: '월', periods: [4, 5, 6] }], timeDisplay: '(주)월4ab5ab6ab', room: '샬403', rating: 4.5, wishlist: 49, color: '#14b8a6' },
+      { id: 'BIZ25', major: '경영학전공 (글로벌경영학부)', name: '투자의실제', prof: '박승일', deptCategory: '전공선택', grade: '3', code: 'CC14206-02', credits: 3, dayPeriods: [{ day: '화', periods: [1, 2, 3] }], timeDisplay: '(주)화1ab2ab3ab', room: '샬411', rating: 4.5, wishlist: 49, color: '#14b8a6' },
+      { id: 'BIZ26', major: '경영학전공 (글로벌경영학부)', name: '투자의실제', prof: '류성희', deptCategory: '전공선택', grade: '3', code: 'CC14206-03', credits: 3, dayPeriods: [{ day: '목', periods: [4, 5, 6] }], timeDisplay: '(주)목4ab5ab6ab', room: '샬403', rating: 0.0, wishlist: 37, color: '#14b8a6' },
+      { id: 'BIZ27', major: '경영학전공 (글로벌경영학부)', name: '투자의실제', prof: 'LI XUECHENG', deptCategory: '전공선택', grade: '3', code: 'CC14206-04', credits: 3, dayPeriods: [{ day: '수', periods: [1, 2, 3] }], timeDisplay: '(주)수1ab2ab3ab', room: '샬502', rating: 0.0, wishlist: 0, color: '#14b8a6' },
+      { id: 'BIZ28', major: '경영학전공 (글로벌경영학부)', name: '투자의실제', prof: 'LI XUECHENG', deptCategory: '전공선택', grade: '3', code: 'CC14206-05', credits: 3, dayPeriods: [{ day: '수', periods: [4, 5, 6] }], timeDisplay: '(주)수4ab5ab6ab', room: '샬502', rating: 0.0, wishlist: 0, color: '#14b8a6' },
+      { id: 'BIZ29', major: '경영학전공 (글로벌경영학부)', name: '투자의실제', prof: 'LI XUECHENG', deptCategory: '전공선택', grade: '3', code: 'CC14206-06', credits: 3, dayPeriods: [{ day: '목', periods: [4, 5, 6] }], timeDisplay: '(주)목4ab5ab6ab', room: '샬502', rating: 0.0, wishlist: 0, color: '#14b8a6' },
+      { id: 'BIZ30', major: '경영학전공 (글로벌경영학부)', name: '재무제표분석', prof: '허경선', deptCategory: '전공선택', grade: '3', code: 'CC14207-01', credits: 3, dayPeriods: [{ day: '수', periods: [4, 5] }, { day: '목', periods: [5, 6] }], timeDisplay: '(주)수4ab5a,목5b6ab', room: '샬408', rating: 5.0, wishlist: 26, color: '#f97316' },
+      { id: 'BIZ31', major: '경영학전공 (글로벌경영학부)', name: '재무제표분석', prof: '허경선', deptCategory: '전공선택', grade: '3', code: 'CC14207-03', credits: 3, dayPeriods: [], timeDisplay: '', room: '', rating: 5.0, wishlist: 78, color: '#f97316' },
+      { id: 'BIZ32', major: '경영학전공 (글로벌경영학부)', name: '리더십과커뮤니케이션', prof: '백상기', deptCategory: '전공선택', grade: '4', code: 'CC14208-01', credits: 3, dayPeriods: [{ day: '수', periods: [4, 5, 6] }], timeDisplay: '(주)수4ab5ab6ab', room: '샬201', rating: 0.0, wishlist: 48, color: '#6366f1' },
+      { id: 'BIZ33', major: '경영학전공 (글로벌경영학부)', name: '리더십과커뮤니케이션', prof: '백상기', deptCategory: '전공선택', grade: '4', code: 'CC14208-02', credits: 3, dayPeriods: [{ day: '목', periods: [7, 8, 9] }], timeDisplay: '(주)목7ab8ab9ab', room: '샬204', rating: 5.0, wishlist: 47, color: '#6366f1' },
+      { id: 'BIZ34', major: '경영학전공 (글로벌경영학부)', name: '진로지도상담IV', prof: '박종혁', deptCategory: '전공선택', grade: '4', code: 'CC14209-03', credits: 0, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 0, color: '#64748b' },
+      { id: 'BIZ35', major: '경영학전공 (글로벌경영학부)', name: '진로지도상담IV', prof: '한준구', deptCategory: '전공선택', grade: '4', code: 'CC14209-04', credits: 0, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 0, color: '#64748b' },
+      { id: 'BIZ36', major: '경영학전공 (글로벌경영학부)', name: '진로지도상담IV', prof: '권오진', deptCategory: '전공선택', grade: '4', code: 'CC14209-05', credits: 0, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 1, color: '#64748b' },
+      { id: 'BIZ37', major: '경영학전공 (글로벌경영학부)', name: '진로지도상담IV', prof: '허경선', deptCategory: '전공선택', grade: '4', code: 'CC14209-06', credits: 0, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 1, color: '#64748b' },
+      { id: 'BIZ38', major: '경영학전공 (글로벌경영학부)', name: '진로지도상담IV', prof: '이지은', deptCategory: '전공선택', grade: '4', code: 'CC14209-08', credits: 0, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 0, color: '#64748b' },
+      { id: 'BIZ39', major: '경영학전공 (글로벌경영학부)', name: '현장실습(장기)I', prof: '한준구', deptCategory: '전공선택', grade: '4', code: 'CC14210-00', credits: 3, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 0, color: '#14b8a6' },
+      { id: 'BIZ40', major: '경영학전공 (글로벌경영학부)', name: '현장실습(장기)II', prof: '한준구', deptCategory: '전공선택', grade: '4', code: 'CC14211-00', credits: 3, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 0, color: '#14b8a6' },
+      { id: 'BIZ41', major: '경영학전공 (글로벌경영학부)', name: '현장실습(장기)III', prof: '한준구', deptCategory: '전공선택', grade: '4', code: 'CC14212-00', credits: 3, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 0, color: '#14b8a6' },
+      { id: 'BIZ42', major: '경영학전공 (글로벌경영학부)', name: '현장실습(장기)IV', prof: '한준구', deptCategory: '전공선택', grade: '4', code: 'CC14213-00', credits: 3, dayPeriods: [], timeDisplay: '', room: '', rating: 0.0, wishlist: 0, color: '#14b8a6' },
+      { id: 'BIZ43', major: '경영학전공 (글로벌경영학부)', name: '마케팅전략', prof: '고인곤', deptCategory: '전공선택', grade: '4', code: 'CC14215-01', credits: 3, dayPeriods: [{ day: '화', periods: [1, 2, 3] }], timeDisplay: '(주)화1ab2ab3ab', room: '샬408', rating: 4.5, wishlist: 27, color: '#d97706' },
+      { id: 'BIZ44', major: '경영학전공 (글로벌경영학부)', name: '마케팅전략', prof: '고인곤', deptCategory: '전공선택', grade: '4', code: 'CC14215-02', credits: 3, dayPeriods: [{ day: '수', periods: [7, 8, 9] }], timeDisplay: '(주)수7ab8ab9ab', room: '샬408', rating: 4.5, wishlist: 35, color: '#d97706' },
+      { id: 'BIZ45', major: '경영학전공 (글로벌경영학부)', name: '조직이론', prof: '윤정권', deptCategory: '전공선택', grade: '4', code: 'CC14216-01', credits: 3, dayPeriods: [{ day: '화', periods: [4, 5, 6] }], timeDisplay: '(주)화4ab5ab6ab', room: '샬402', rating: 5.0, wishlist: 55, color: '#3b82f6' },
+      { id: 'BIZ46', major: '경영학전공 (글로벌경영학부)', name: '조직이론', prof: '윤정권', deptCategory: '전공선택', grade: '4', code: 'CC14216-02', credits: 3, dayPeriods: [{ day: '화', periods: [7, 8, 9] }], timeDisplay: '(주)화7ab8ab9ab', room: '샬402', rating: 5.0, wishlist: 53, color: '#3b82f6' },
+      { id: 'BIZ47', major: '경영학전공 (글로벌경영학부)', name: '비교경영', prof: '양재형', deptCategory: '전공선택', grade: '4', code: 'CC14217-01', credits: 3, dayPeriods: [{ day: '화', periods: [7, 8, 9] }], timeDisplay: '(주)화7ab8ab9ab', room: '샬411', rating: 0.0, wishlist: 23, color: '#8b5cf6' },
+      { id: 'BIZ48', major: '경영학전공 (글로벌경영학부)', name: '비교경영', prof: '이정우', deptCategory: '전공선택', grade: '4', code: 'CC14217-02', credits: 3, dayPeriods: [{ day: '월', periods: [4, 5, 6] }], timeDisplay: '(주)월4ab5ab6ab', room: '샬201', rating: 0.0, wishlist: 47, color: '#8b5cf6' },
+      { id: 'BIZ49', major: '경영학전공 (글로벌경영학부)', name: '비교경영', prof: '이정우', deptCategory: '전공선택', grade: '4', code: 'CC14217-03', credits: 3, dayPeriods: [{ day: '월', periods: [7, 8, 9] }], timeDisplay: '(주)월7ab8ab9ab', room: '샬201', rating: 0.0, wishlist: 22, color: '#8b5cf6' },
+
+      // === 균형교양 (그린 톤) ===
+      { id: 'E101', name: '서양역사의이해', prof: '윤정환', deptCategory: '균형교양', area: 1, code: 'NE11702-00', credits: 3, dayPeriods: [{day:'월', periods:[4,5,6]}], timeDisplay: '(주)월4ab5ab6ab', room: '샬808', rating: 4.5, wishlist: 55, color: '#10b981' },
+      { id: 'E102', name: '서양의지혜', prof: '김시형', deptCategory: '균형교양', area: 1, code: 'NE11703-00', credits: 3, dayPeriods: [{day:'목', periods:[7,8,9]}], timeDisplay: '(주)목7ab8ab9ab', room: '샬801', rating: 4.2, wishlist: 18, color: '#10b981' },
+      { id: 'E103', name: '예술과철학', prof: '신인섭', deptCategory: '균형교양', area: 1, code: 'NE11704-00', credits: 3, dayPeriods: [{day:'금', periods:[7,8,9]}], timeDisplay: '(주)금7ab8ab9ab', room: '샬603', rating: 4.8, wishlist: 35, color: '#10b981' },
+      { id: 'E11705', name: '인간과윤리', prof: '신인섭', deptCategory: '균형교양', area: 1, code: 'NE11705-00', credits: 3, dayPeriods: [{day:'월', periods:[7,8,9]}], timeDisplay: '(주)월7ab8ab9ab', room: '천403', rating: 2.5, wishlist: 20, color: '#10b981' },
+      { id: 'E11707', name: '서양근대와동아시아', prof: '이영희', deptCategory: '균형교양', area: 1, code: 'NE11707-00', credits: 3, dayPeriods: [{day:'화', periods:[7,8,9]}], timeDisplay: '(주)화7ab8ab9ab', room: '샬701', rating: 5.0, wishlist: 68, color: '#10b981' },
+      { id: 'E11708', name: '신화와철학', prof: '윤진욱', deptCategory: '균형교양', area: 1, code: 'NE11708-00', credits: 3, dayPeriods: [{day:'금', periods:[7,8,9]}], timeDisplay: '(주)금7ab8ab9ab', room: '샬708', rating: 0.0, wishlist: 13, color: '#10b981' },
+      { id: 'E11709', name: '역사속동서문화교류사', prof: '김인호', deptCategory: '균형교양', area: 1, code: 'NE11709-00', credits: 3, dayPeriods: [{day:'수', periods:[7,8,9]}], timeDisplay: '(주)수7ab8ab9ab', room: '샬304', rating: 4.5, wishlist: 76, color: '#10b981' },
+      { id: 'E11710', name: '심성론과심리철학', prof: '김준승', deptCategory: '균형교양', area: 1, code: 'NE11710-00', credits: 3, dayPeriods: [{day:'화', periods:[4,5,6]}], timeDisplay: '(주)화4ab5ab6ab', room: '천408', rating: 0.0, wishlist: 71, color: '#10b981' },
+      { id: 'E11711', name: 'Creative Mind', prof: '고윤정', deptCategory: '균형교양', area: 1, code: 'NE11711-00', credits: 3, dayPeriods: [{day:'월', periods:[4,5,6]}], timeDisplay: '(주)월4ab5ab6ab', room: '천406', rating: 5.0, wishlist: 40, color: '#10b981' },
+      { id: 'E11712', name: '역사로보는일본', prof: 'KUROYANAGI SHIGEO', deptCategory: '균형교양', area: 1, code: 'NE11712-00', credits: 3, dayPeriods: [{day:'수', periods:[1,2,3]}], timeDisplay: '(주)수1ab2ab3ab', room: '샬806', rating: 5.0, wishlist: 70, color: '#10b981' },
+      { id: 'E21702', name: 'Moral Compass for the Right Direction', prof: 'SWANSON TODD ALLEN', deptCategory: '균형교양', area: 2, code: 'NE21702-00', credits: 3, dayPeriods: [{day:'수', periods:[1,2,3]}], timeDisplay: '(주)수1ab2ab3ab', room: '천219', rating: 5.0, wishlist: 22, color: '#10b981' },
+      { id: 'E21703', name: '실버시대의문학과문화', prof: '노춘기', deptCategory: '균형교양', area: 2, code: 'NE21703-00', credits: 3, dayPeriods: [{day:'월', periods:[7,8,9]}], timeDisplay: '(주)월7ab8ab9ab', room: '천201', rating: 5.0, wishlist: 61, color: '#10b981' },
+      { id: 'E21704', name: '영어읽기와감상', prof: '박효춘', deptCategory: '균형교양', area: 2, code: 'NE21704-00', credits: 3, dayPeriods: [{day:'금', periods:[1,2,3]}], timeDisplay: '(주)금1ab2ab3ab', room: '샬204', rating: 4.0, wishlist: 24, color: '#10b981' },
+      { id: 'E201', name: '미디어문학의이해', prof: '박효춘', deptCategory: '균형교양', area: 2, code: 'NE21705-00', credits: 3, dayPeriods: [{day:'수', periods:[1,2,3]}], timeDisplay: '(주)수1ab2ab3ab', room: '샬801', rating: 4.2, wishlist: 61, color: '#10b981' },
+      { id: 'E203', name: '독일어와유럽문화', prof: '김은애', deptCategory: '균형교양', area: 2, code: 'NE21706-00', credits: 3, dayPeriods: [{day:'금', periods:[1,2,3]}], timeDisplay: '(주)금1ab2ab3ab', room: '샬802', rating: 4.8, wishlist: 46, color: '#10b981' },
+      { id: 'E21707', name: '스페인어문학', prof: '김태영', deptCategory: '균형교양', area: 2, code: 'NE21707-00', credits: 3, dayPeriods: [{day:'수', periods:[7,8,9]}], timeDisplay: '(주)수7ab8ab9ab', room: '샬801', rating: 4.5, wishlist: 74, color: '#10b981' },
+      { id: 'E21708', name: '현대실용중국어', prof: '정혜인', deptCategory: '균형교양', area: 2, code: 'NE21708-00', credits: 3, dayPeriods: [{day:'월', periods:[7,8,9]}], timeDisplay: '(주)월7ab8ab9ab', room: '샬502', rating: 0.0, wishlist: 16, color: '#10b981' },
+      { id: 'E21709', name: '일본어문학', prof: 'KUROYANAGI SHIGEO', deptCategory: '균형교양', area: 2, code: 'NE21709-00', credits: 3, dayPeriods: [{day:'월', periods:[7,8,9]}], timeDisplay: '(주)월7ab8ab9ab', room: '샬801', rating: 5.0, wishlist: 46, color: '#10b981' },
+      { id: 'E21710', name: '생활일본어', prof: 'KUROYANAGI SHIGEO', deptCategory: '균형교양', area: 2, code: 'NE21710-00', credits: 3, dayPeriods: [{day:'화', periods:[7,8,9]}], timeDisplay: '(주)화7ab8ab9ab', room: '샬808', rating: 5.0, wishlist: 43, color: '#10b981' },
+      { id: 'E31701', name: '현대인의가족관계', prof: '김윤하', deptCategory: '균형교양', area: 3, code: 'NE31701-00', credits: 3, dayPeriods: [{day:'금', periods:[4,5,6]}], timeDisplay: '(주)금4ab5ab6ab', room: '샬801', rating: 1.0, wishlist: 38, color: '#10b981' },
+      { id: 'E302', name: '시민사회의이해', prof: '김수정', deptCategory: '균형교양', area: 3, code: 'NE31702-00', credits: 3, dayPeriods: [{day:'월', periods:[4,5,6]}], timeDisplay: '(주)월4ab5ab6ab', room: '인301', rating: 4.8, wishlist: 73, color: '#10b981' },
+      { id: 'E31703', name: '인간존엄과사회복지', prof: '문선혜', deptCategory: '균형교양', area: 3, code: 'NE31703-00', credits: 3, dayPeriods: [{day:'수', periods:[7,8,9]}], timeDisplay: '(주)수7ab8ab9ab', room: '샬806', rating: 0.0, wishlist: 73, color: '#10b981' },
+      { id: 'E31705', name: '융합적분석과인문학의대안', prof: '홍한얼', deptCategory: '균형교양', area: 3, code: 'NE31705-00', credits: 3, dayPeriods: [{day:'수', periods:[7,8,9]}], timeDisplay: '(주)수7ab8ab9ab', room: '샬808', rating: 0.0, wishlist: 61, color: '#10b981' },
+      { id: 'E31706', name: '인간과미래', prof: '심재정', deptCategory: '균형교양', area: 3, code: 'NE31706-00', credits: 3, dayPeriods: [{day:'화', periods:[4,5]}, {day:'수', periods:[5,6]}], timeDisplay: '(주)화4ab5a,수5b6ab', room: '샬708', rating: 5.0, wishlist: 70, color: '#10b981' },
+      { id: 'E31707', name: '세대문화와세대문제', prof: '김수정', deptCategory: '균형교양', area: 3, code: 'NE31707-00', credits: 3, dayPeriods: [{day:'목', periods:[1,2,3]}], timeDisplay: '(주)목1ab2ab3ab', room: '인301', rating: 5.0, wishlist: 79, color: '#10b981' },
+      { id: 'E31708', name: '자기발견을위한심리학', prof: '임아영', deptCategory: '균형교양', area: 3, code: 'NE31708-00', credits: 3, dayPeriods: [{day:'금', periods:[4,5,6]}], timeDisplay: '(주)금4ab5ab6ab', room: '인301', rating: 4.5, wishlist: 59, color: '#10b981' },
+      { id: 'E31709', name: '심리상담의이해', prof: '임아영', deptCategory: '균형교양', area: 3, code: 'NE31709-00', credits: 3, dayPeriods: [{day:'월', periods:[4,5,6]}], timeDisplay: '(주)월4ab5ab6ab', room: '샬806', rating: 5.0, wishlist: 81, color: '#10b981' },
+      { id: 'E31710', name: '정치와경제', prof: '정진', deptCategory: '균형교양', area: 3, code: 'NE31710-00', credits: 3, dayPeriods: [{day:'금', periods:[7,8,9]}], timeDisplay: '(주)금7ab8ab9ab', room: '샬709', rating: 0.0, wishlist: 22, color: '#10b981' },
+      { id: 'E310', name: '전쟁과거버넌스', prof: '박새암', deptCategory: '균형교양', area: 3, code: 'NE31712-00', credits: 3, dayPeriods: [{day:'수', periods:[1,2,3]}], timeDisplay: '(주)수1ab2ab3ab', room: '샬708', rating: 4.7, wishlist: 63, color: '#10b981' },
+      { id: 'E41701', name: '미생물학', prof: '정지은', deptCategory: '균형교양', area: 4, code: 'NE41701-00', credits: 3, dayPeriods: [{day:'월', periods:[7,8,9]}], timeDisplay: '(주)월7ab8ab9ab', room: '샬806', rating: 1.0, wishlist: 46, color: '#10b981' },
+      { id: 'E41702', name: '환경의이해', prof: '고승원', deptCategory: '균형교양', area: 4, code: 'NE41702-00', credits: 3, dayPeriods: [{day:'목', periods:[7,8,9]}], timeDisplay: '(주)목7ab8ab9ab', room: '샬806', rating: 0.0, wishlist: 72, color: '#10b981' },
+      { id: 'E41703-01', name: '생활과에너지', prof: '윤신숙', deptCategory: '균형교양', area: 4, code: 'NE41703-01', credits: 3, dayPeriods: [{day:'화', periods:[4,5]}, {day:'수', periods:[5,6]}], timeDisplay: '(주)화4ab5a,수5b6ab', room: '천201', rating: 4.5, wishlist: 32, color: '#10b981' },
+      { id: 'E41703-02', name: '생활과에너지', prof: '윤신숙', deptCategory: '균형교양', area: 4, code: 'NE41703-02', credits: 3, dayPeriods: [{day:'화', periods:[5,6]}, {day:'목', periods:[4,5]}], timeDisplay: '(주)화5b6ab,목4ab5a', room: '천201', rating: 5.0, wishlist: 70, color: '#10b981' },
+      { id: 'E401', name: '인체의세계', prof: '정은정', deptCategory: '균형교양', area: 4, code: 'NE41704-01', credits: 3, dayPeriods: [{day:'화', periods:[4,5]}, {day:'수', periods:[5,6]}], timeDisplay: '(주)화4ab5a,수5b6ab', room: '샬607', rating: 5.0, wishlist: 70, color: '#10b981' },
+      { id: 'E41704-02', name: '인체의세계', prof: '정은정', deptCategory: '균형교양', area: 4, code: 'NE41704-02', credits: 3, dayPeriods: [{day:'수', periods:[4,5]}, {day:'목', periods:[5,6]}], timeDisplay: '(주)수4ab5a,목5b6ab', room: '샬607', rating: 3.5, wishlist: 65, color: '#10b981' },
+      { id: 'E403', name: '기초통계다루기', prof: '김미영', deptCategory: '균형교양', area: 4, code: 'NE41705-01', credits: 3, dayPeriods: [{day:'월', periods:[1,2,3]}], timeDisplay: '(주)월1ab2ab3ab', room: '샬211', rating: 4.8, wishlist: 23, color: '#10b981' },
+      { id: 'E41707', name: '4차산업혁명핵심기술의이해', prof: '김덕은', deptCategory: '균형교양', area: 4, code: 'NE41707-00', credits: 3, dayPeriods: [{day:'목', periods:[7,8,9]}], timeDisplay: '(주)목7ab8ab9ab', room: '샬709', rating: 0.0, wishlist: 21, color: '#10b981' },
+      { id: 'E41708', name: '데이터분석의기초', prof: '임근호', deptCategory: '균형교양', area: 4, code: 'NE41708-00', credits: 3, dayPeriods: [{day:'월', periods:[4,5,6]}], timeDisplay: '(주)월4ab5ab6ab', room: '천201', rating: 1.0, wishlist: 57, color: '#10b981' },
+      { id: 'E41709', name: '손안의데이터과학', prof: '안병태', deptCategory: '균형교양', area: 4, code: 'NE41709-00', credits: 3, dayPeriods: [{day:'화', periods:[7,8,9]}], timeDisplay: '(주)화7ab8ab9ab', room: '샬709', rating: 0.0, wishlist: 17, color: '#10b981' },
+      { id: 'E41710-01', name: '데이터리터러시', prof: '임근호', deptCategory: '균형교양', area: 4, code: 'NE41710-01', credits: 3, dayPeriods: [{day:'화', periods:[1,2,3]}], timeDisplay: '(주)화1ab2ab3ab', room: '천201', rating: 0.0, wishlist: 66, color: '#10b981' },
+      { id: 'E41710-02', name: '데이터리터러시', prof: '임근호', deptCategory: '균형교양', area: 4, code: 'NE41710-02', credits: 3, dayPeriods: [{day:'월', periods:[1,2,3]}], timeDisplay: '(주)월1ab2ab3ab', room: '천219', rating: 5.0, wishlist: 20, color: '#10b981' },
+      { id: 'E501', name: '세계의식탁문화', prof: '김지영', deptCategory: '균형교양', area: 5, code: 'NE51701-00', credits: 3, dayPeriods: [{day:'금', periods:[7,8,9]}], timeDisplay: '(주)금7ab8ab9ab', room: '샬401', rating: 4.5, wishlist: 64, color: '#10b981' },
+      { id: 'E51703', name: '중국역사지리기행', prof: '박성혜', deptCategory: '균형교양', area: 5, code: 'NE51703-00', credits: 3, dayPeriods: [{day:'화', periods:[7,8,9]}], timeDisplay: '(주)화7ab8ab9ab', room: '샬708', rating: 5.0, wishlist: 28, color: '#10b981' },
+      { id: 'E51704', name: '세계도시와예술', prof: '김은애', deptCategory: '균형교양', area: 5, code: 'NE51704-00', credits: 3, dayPeriods: [{day:'목', periods:[1,2,3]}], timeDisplay: '(주)목1ab2ab3ab', room: '천201', rating: 5.0, wishlist: 77, color: '#10b981' },
+      { id: 'E51705', name: '유럽음악기행', prof: '임영주', deptCategory: '균형교양', area: 5, code: 'NE51705-00', credits: 3, dayPeriods: [{day:'목', periods:[7,8,9]}], timeDisplay: '(주)목7ab8ab9ab', room: '샬807', rating: 4.0, wishlist: 61, color: '#10b981' },
+      { id: 'E51706', name: '국악의감상', prof: '김지혜', deptCategory: '균형교양', area: 5, code: 'NE51706-00', credits: 3, dayPeriods: [{day:'목', periods:[7,8,9]}], timeDisplay: '(주)목7ab8ab9ab', room: '샬708', rating: 0.0, wishlist: 36, color: '#10b981' },
+      { id: 'E507', name: '운동과건강', prof: '이대연', deptCategory: '균형교양', area: 5, code: 'NE51707-00', credits: 3, dayPeriods: [{day:'금', periods:[4,5,6]}], timeDisplay: '(주)금4ab5ab6ab', room: '샬404', rating: 5.0, wishlist: 75, color: '#10b981' },
+      { id: 'E51709', name: '동서양미학의이해', prof: '강교희', deptCategory: '균형교양', area: 5, code: 'NE51709-00', credits: 3, dayPeriods: [{day:'화', periods:[7,8,9]}], timeDisplay: '(주)화7ab8ab9ab', room: '샬806', rating: 0.0, wishlist: 54, color: '#10b981' },
+      { id: 'E51710', name: '동서양미술의이해', prof: '서희정', deptCategory: '균형교양', area: 5, code: 'NE51710-00', credits: 3, dayPeriods: [{day:'금', periods:[7,8,9]}], timeDisplay: '(주)금7ab8ab9ab', room: '샬808', rating: 0.0, wishlist: 13, color: '#10b981' }
+    ];
+
+    /* -----------------------------------------------------------
+       1-2. 전공 목록 & 전공 전환 (야간 전공 모두 제거)
+       ----------------------------------------------------------- */
+    const DEFAULT_MAJOR = '자유전공학부';
+    const COMMON_CATEGORIES = ['균형교양'];
+
+    const BASE_MAJORS = [
+      '자유전공학부',
+      'ICT융합공학부 (공과대학)',
+      'Wel-Tech융합전공 (복지융합대학)',
+      '가상현실전공 (ICT융합공학부)',
+      '건축공학전공 (부동산건설학부)',
+      '경영학전공 (글로벌경영학부)',
+      '경영학전공 (상경학부)',
+      '경제금융전공 (정경학부)',
+      '경제금융학전공',
+      '공공인재학전공 (정경학부)',
+      '교양 (대학)'
+    ];
+    const MAJORS = Array.from(new Set([...BASE_MAJORS, ...(Array.isArray(window.EXTRA_MAJORS) ? window.EXTRA_MAJORS : [])]));
+    if (Array.isArray(window.EXTRA_COURSES)) ALL_COURSES.push(...window.EXTRA_COURSES);
+
+    let selectedMajor = DEFAULT_MAJOR;
+
+    function parseMajor(label) {
+      const idx = label.indexOf(' (');
+      if (idx > 0 && label.endsWith(')')) return { name: label.slice(0, idx), group: label.slice(idx + 2, -1) };
+      return { name: label, group: '' };
+    }
+
+    function courseInSelectedMajor(c) {
+      if (COMMON_CATEGORIES.includes(c.deptCategory)) return true;
+      return (c.major || DEFAULT_MAJOR) === selectedMajor;
+    }
+
+    function majorOwnCourseCount(label) {
+      return ALL_COURSES.filter(c => !COMMON_CATEGORIES.includes(c.deptCategory) && (c.major || DEFAULT_MAJOR) === label).length;
+    }
+
+    function renderMajorList(query = '') {
+      const box = document.getElementById('majorListContainer');
+      const norm = (t) => t.replace(/\s+/g, '').toLowerCase();
+      const q = norm(query);
+
+      const groups = [];
+      const groupMap = {};
+      MAJORS.forEach((label, idx) => {
+        if (q && !norm(label).includes(q)) return;
+        const g = parseMajor(label).group || '소속 표기 없음';
+        if (!groupMap[g]) { groupMap[g] = []; groups.push(g); }
+        groupMap[g].push({ label, idx });
+      });
+
+      if (groups.length === 0) {
+        box.innerHTML = '<div class="py-10 text-center text-slate-500 text-xs">검색 결과가 없습니다.</div>';
+        return;
+      }
+
+      box.innerHTML = groups.map(g => {
+        const rows = groupMap[g].map(({ label, idx }) => {
+          const { name } = parseMajor(label);
+          const count = majorOwnCourseCount(label);
+          const isSel = label === selectedMajor;
+          const badge = count > 0
+            ? `<span class="text-[10px] font-bold text-sky-400">${count}개</span>`
+            : `<span class="text-[10px] text-slate-500">준비 중</span>`;
+          return `
+            <button type="button" onclick="selectMajorByIndex(${idx})" class="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-left transition ${isSel ? 'bg-[#1e2538] border border-blue-600/50' : 'bg-[#242426] border border-transparent hover:border-slate-600'}">
+              <span class="text-[12px] font-bold text-white break-words min-w-0">${name}</span>
+              <span class="flex items-center gap-2 shrink-0">${badge}${isSel ? '<i class="fa-solid fa-check text-sky-400 text-[11px]"></i>' : ''}</span>
+            </button>`;
+        }).join('');
+        return `
+          <div class="text-[10px] font-bold text-slate-500 px-1 pt-3 pb-1.5">${g}</div>
+          <div class="flex flex-col gap-1.5">${rows}</div>`;
+      }).join('');
+    }
+
+    function openMajorSheet() {
+      const overlay = document.getElementById('majorSheetOverlay');
+      const sheet = document.getElementById('majorSheet');
+      document.getElementById('majorSearchInput').value = '';
+      renderMajorList('');
+      document.getElementById('majorListContainer').scrollTop = 0;
+
+      overlay.classList.remove('hidden');
+      void overlay.offsetWidth;
+      overlay.classList.remove('opacity-0', 'pointer-events-none');
+      overlay.classList.add('opacity-100', 'pointer-events-auto');
+      sheet.classList.remove('translate-y-full');
+      sheet.classList.add('translate-y-0');
+    }
+
+    function closeMajorSheet() {
+      const overlay = document.getElementById('majorSheetOverlay');
+      const sheet = document.getElementById('majorSheet');
+      overlay.classList.remove('opacity-100', 'pointer-events-auto');
+      overlay.classList.add('opacity-0', 'pointer-events-none');
+      sheet.classList.remove('translate-y-0');
+      sheet.classList.add('translate-y-full');
+      setTimeout(() => overlay.classList.add('hidden'), 300);
+    }
+
+    function selectMajorByIndex(idx) {
+      const label = MAJORS[idx];
+      if (!label) return;
+      selectedMajor = label;
+      const el = document.getElementById('majorSelectLabel');
+      el.textContent = label;
+      document.getElementById('majorSelectBtn').title = label;
+      closeMajorSheet();
+      setCourseFilter('all', null);   // 카테고리 필터 초기화 + 목록 다시 그리기
+    }
+
+    /* -----------------------------------------------------------
+       2. 애플리케이션 상태 (State)
+       ----------------------------------------------------------- */
+    const DAYS = ['월', '화', '수', '목', '금'];
+    const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+    
+    const PERIOD_TIMES = {
+      1: '09:00-09:50',
+      2: '09:50-10:50',
+      3: '10:50-11:40',
+      4: '11:50-12:40',
+      5: '12:40-01:40',
+      6: '01:40-02:30',
+      7: '02:40-03:30',
+      8: '03:30-04:30',
+      9: '04:30-05:20'
+    };
+
+    let currentMode = 'browse';
+    let selectedFilterCategory = 'all';
+    let searchQuery = '';
+    let planBPreference = 'vacation'; 
+    let previewCourse = null;
+    let targetPlanBCourseId = null; 
+
+    // 초기 빈 시간표
+    let enrolledCourseIds = [];
+
+    function getEnrolledCourses() {
+      return enrolledCourseIds.map(id => ALL_COURSES.find(c => c.id === id)).filter(Boolean);
+    }
+
+    function getTotalCredits() {
+      return getEnrolledCourses().reduce((sum, c) => sum + (c.credits || 0), 0);
+    }
+
+    /* -----------------------------------------------------------
+       3. 충돌 검사
+       ----------------------------------------------------------- */
+    function checkConflict(targetCourse, ignoreCourseId = null) {
+      if (!targetCourse.dayPeriods || targetCourse.dayPeriods.length === 0) {
+        return { hasConflict: false };
+      }
+      const activeList = getEnrolledCourses().filter(c => c.id !== ignoreCourseId);
+      for (const enrolled of activeList) {
+        if (!enrolled.dayPeriods || enrolled.dayPeriods.length === 0) continue;
+        for (const tDp of targetCourse.dayPeriods) {
+          for (const eDp of enrolled.dayPeriods) {
+            if (tDp.day === eDp.day) {
+              const overlap = tDp.periods.filter(p => eDp.periods.includes(p));
+              if (overlap.length > 0) {
+                return { hasConflict: true, with: enrolled.name, day: tDp.day, periods: overlap };
+              }
+            }
+          }
+        }
+      }
+      return { hasConflict: false };
+    }
+
+    /* -----------------------------------------------------------
+       4. 모바일 시간표 렌더링 (줄바꿈 수정)
+       ----------------------------------------------------------- */
+    function renderTimetable() {
+      const wrapper = document.getElementById('timetableGridWrapper');
+      wrapper.innerHTML = '';
+
+      const enrolled = getEnrolledCourses();
+      const cellMap = {};
+      const renderedSpan = {};
+
+      DAYS.forEach(d => {
+        cellMap[d] = {};
+        renderedSpan[d] = {};
+      });
+
+      enrolled.forEach(c => {
+        (c.dayPeriods || []).forEach(dp => {
+          dp.periods.forEach(p => {
+            if (p <= 9) cellMap[dp.day][p] = { course: c, isPreview: false };
+          });
+        });
+      });
+
+      if (currentMode === 'browse' && previewCourse) {
+        (previewCourse.dayPeriods || []).forEach(dp => {
+          dp.periods.forEach(p => {
+            if (p <= 9 && !cellMap[dp.day][p]) {
+              cellMap[dp.day][p] = { course: previewCourse, isPreview: true };
+            }
+          });
+        });
+      }
+
+      PERIODS.forEach(p => {
+        const pCell = document.createElement('div');
+        pCell.className = 'tt-cell bg-[#18181a] border-b border-[#242426] flex flex-col items-center justify-center text-slate-400 font-bold px-1 py-0.5 gap-0.5';
+        
+        const timeParts = PERIOD_TIMES[p].split('-');
+        pCell.innerHTML = `
+          <span class="text-[11px] font-extrabold text-slate-300 leading-none">${timeParts[0]}</span>
+          <span class="text-[9px] font-medium text-slate-500 leading-none">${timeParts[1]}</span>
+        `;
+        wrapper.appendChild(pCell);
+
+        DAYS.forEach(day => {
+          if (renderedSpan[day][p]) return;
+
+          const slot = cellMap[day][p];
+          const cell = document.createElement('div');
+          cell.className = 'tt-cell border-b border-[#242426] p-[2px] relative flex flex-col justify-start';
+
+          if (slot) {
+            const c = slot.course;
+            const dp = c.dayPeriods.find(d => d.day === day);
+            const consecutive = dp ? dp.periods.filter(period => period >= p) : [p];
+
+            let span = 1;
+            for (let i = 1; i < consecutive.length; i++) {
+              if (consecutive[i] === p + i) span++;
+              else break;
+            }
+
+            if (span > 1) {
+              cell.style.height = `${span * 48}px`;
+              cell.style.gridRow = `span ${span}`;
+              for (let s = 1; s < span; s++) renderedSpan[day][p + s] = true;
+            }
+            renderedSpan[day][p] = true;
+
+            const isPreview = slot.isPreview;
+            const block = document.createElement('div');
+            block.className = `w-full h-full rounded-md p-1.5 flex flex-col justify-start leading-tight overflow-hidden text-left transition shadow-sm ${
+              isPreview ? 'border-2 border-dashed border-amber-400 opacity-90' : 'border border-black/10'
+            }`;
+            block.style.backgroundColor = isPreview ? '#422006' : (c.color || '#3b82f6');
+            block.style.color = '#ffffff';
+
+            // 줄바꿈 허용 (line-clamp-2, break-words) 및 하단 정보 여백 조정
+            block.innerHTML = `
+              <div class="font-extrabold text-[11px] line-clamp-2 break-words leading-snug">${c.name}</div>
+              <div class="flex flex-col mt-auto items-start w-full overflow-hidden">
+                <span class="text-[9px] font-bold opacity-90 w-full truncate">${c.prof}</span>
+                ${c.room ? `<span class="text-[9px] opacity-80 mt-[1px] w-full truncate">${c.room}</span>` : ''}
+              </div>
+            `;
+            cell.appendChild(block);
+          } else {
+            cell.className += ' bg-[#121212]/50';
+          }
+          wrapper.appendChild(cell);
+        });
+      });
+
+      updateCreditHeader();
+    }
+
+    function updateCreditHeader() {
+      const credits = getTotalCredits();
+      const badge = document.getElementById('creditTotalBadge');
+      const msg = document.getElementById('creditStatusMsg');
+
+      badge.textContent = `${credits} / 19`;
+      if (credits < 12) {
+        msg.textContent = `(최소 12학점 미달: ${12 - credits}학점 필요)`;
+        msg.className = 'text-[10px] text-amber-400 font-medium';
+      } else if (credits > 19) {
+        msg.textContent = `(19학점 초과 불가)`;
+        msg.className = 'text-[10px] text-rose-500 font-bold';
+      } else {
+        msg.textContent = `(정상 범위 충족)`;
+        msg.className = 'text-[10px] text-emerald-400 font-medium';
+      }
+    }
+
+    /* -----------------------------------------------------------
+       5. 리스트 렌더링
+       ----------------------------------------------------------- */
+    function renderCourseList() {
+      const container = document.getElementById('courseListContainer');
+      container.innerHTML = '';
+
+      const q = searchQuery.toLowerCase().trim();
+      const filtered = ALL_COURSES.filter(c => {
+        if (!courseInSelectedMajor(c)) return false;
+        if (selectedFilterCategory !== 'all') {
+          if (selectedFilterCategory.includes('균형')) {
+            const num = selectedFilterCategory.replace(/[^0-9]/g, '');
+            if (c.deptCategory !== '균형교양' || c.area.toString() !== num) return false;
+          } else {
+            if (c.deptCategory !== selectedFilterCategory) return false;
+          }
+        }
+        
+        if (q) {
+          const matchName = c.name.toLowerCase().includes(q);
+          const matchProf = c.prof.toLowerCase().includes(q);
+          const matchCode = c.code.toLowerCase().includes(q);
+          if (!matchName && !matchProf && !matchCode) return false;
+        }
+        return true;
+      });
+
+      const majorHasData = majorOwnCourseCount(selectedMajor) > 0;
+
+      if (filtered.length === 0) {
+        container.innerHTML = majorHasData
+          ? `<div class="py-12 text-center text-slate-500 text-xs">조건에 맞는 교과목이 없습니다.</div>`
+          : `<div class="py-12 text-center text-slate-500 text-xs">이 전공의 교과목은 아직 준비 중입니다.</div>`;
+        return;
+      }
+
+      if (!majorHasData) {
+        container.insertAdjacentHTML('beforeend', `<div class="px-3 py-2 rounded-xl bg-[#1e2538] border border-blue-600/30 text-[11px] text-sky-300">이 전공의 교과목은 아직 준비 중이에요. 균형교양만 표시됩니다.</div>`);
+      }
+
+      filtered.forEach(c => {
+        const isEnrolled = enrolledCourseIds.includes(c.id);
+        const conflict = checkConflict(c);
+
+        const card = document.createElement('div');
+        card.className = `p-3 rounded-2xl border transition flex flex-col gap-2 ${
+          isEnrolled 
+            ? 'bg-[#1e2538] border-blue-600/50' 
+            : 'bg-[#18181a] border-[#2c2c2e] hover:border-slate-600'
+        }`;
+
+        let badgeStyle = 'bg-[#2a2a2d] text-slate-300';
+        let displayCat = c.deptCategory;
+        
+        if (c.deptCategory === '전공기초') badgeStyle = 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/50';
+        else if (c.deptCategory === '기초교양') badgeStyle = 'bg-blue-950/60 text-blue-400 border border-blue-800/50';
+        else if (c.deptCategory === '전공선택') badgeStyle = 'bg-amber-950/60 text-amber-400 border border-amber-800/50';
+        else if (c.deptCategory === '전공필수') badgeStyle = 'bg-rose-950/60 text-rose-400 border border-rose-800/50';
+        else if (c.deptCategory === '전공탐색') badgeStyle = 'bg-cyan-950/60 text-cyan-400 border border-cyan-800/50';
+        else if (c.deptCategory === '균형교양') {
+          badgeStyle = 'bg-purple-950/60 text-purple-400 border border-purple-800/50';
+          displayCat = `${c.area}영역`;
+        }
+
+        let creditStr = '';
+        if (c.deptCategory === '균형교양') {
+          creditStr = `<b class="text-white">${c.credits}학점</b>`;
+        } else {
+          const gradeText = c.grade ? `${c.grade}학년 ` : '1학년 ';
+          creditStr = `${gradeText}<b class="text-white">${c.credits}학점</b>`;
+        }
+
+        const metaParts = [];
+        if (c.timeDisplay) metaParts.push(`<span class="text-slate-300 font-semibold">${c.timeDisplay}</span>`);
+        if (c.room) metaParts.push(`<span>${c.room}</span>`);
+        if (c.code) metaParts.push(`<span class="font-mono">${c.code}</span>`);
+        const metaHtml = metaParts.join('<span>•</span>');
+
+        const starCount = Math.round(c.rating || 0);
+        const starsHtml = starCount > 0 
+          ? `<span class="text-amber-400">${'★'.repeat(starCount)}</span><span class="text-slate-600">${'★'.repeat(5 - starCount)}</span>`
+          : `<span class="text-slate-600">★★★★★</span>`;
+
+        card.innerHTML = `
+          <div class="flex items-start justify-between">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="text-[9px] font-bold px-1.5 py-0.5 rounded ${badgeStyle}">${displayCat}</span>
+                <span class="text-xs font-bold text-white break-words">${c.name}</span>
+              </div>
+              <div class="text-[11px] text-slate-400 font-medium mt-1">
+                ${c.prof} 교수
+              </div>
+              <div class="text-[10px] text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                ${metaHtml}
+              </div>
+            </div>
+
+            <div class="text-right shrink-0 ml-2">
+              <div class="text-[11px] font-bold tracking-tighter">${starsHtml}</div>
+              <div class="text-[10px] text-slate-400 mt-0.5">담은 <b class="text-slate-200">${c.wishlist}</b></div>
+            </div>
+          </div>
+
+          <div class="pt-2 mt-1 border-t border-[#262629] flex items-center justify-between">
+            <span class="text-[10px] text-slate-400">${creditStr}</span>
+            <div class="flex items-center gap-1.5">
+              ${renderCardActionButton(c, isEnrolled, conflict)}
+            </div>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function renderCardActionButton(c, isEnrolled, conflict) {
+      if (currentMode === 'browse') {
+        if (!c.dayPeriods || c.dayPeriods.length === 0) {
+          return `<span class="px-2.5 py-1 rounded-lg bg-[#242426] text-slate-500 text-[11px] font-medium">시간 미지정</span>`;
+        }
+        return `
+          <button onclick="previewOnTimetable('${c.id}')" class="px-2.5 py-1 rounded-lg bg-[#2a2a2d] hover:bg-[#343438] text-slate-200 text-[11px] font-medium transition">미리보기</button>
+        `;
+      }
+
+      if (isEnrolled) {
+        if (c.isLocked) return `<span class="text-[10px] font-bold text-slate-500 px-2 py-1 bg-[#242426] rounded">고정 필수</span>`;
+        
+        let btns = '';
+        if (c.deptCategory === '균형교양') {
+          btns += `<button onclick="openPlanBModal('${c.id}')" class="px-2.5 py-1 rounded-lg bg-amber-600/20 text-amber-400 border border-amber-500/30 text-[11px] font-bold mr-1 flex items-center gap-1"><i class="fa-solid fa-bolt"></i> 대체 추천</button>`;
+        }
+        
+        btns += `<button onclick="removeCourse('${c.id}')" class="px-2.5 py-1 rounded-lg bg-rose-600/20 text-rose-400 border border-rose-500/30 text-[11px] font-bold">취소</button>`;
+        return btns;
+      } else {
+        if (conflict.hasConflict) {
+          return `<button onclick="showToast('${conflict.with} 중복', 'error')" class="px-2.5 py-1 rounded-lg bg-red-950/40 text-red-400 border border-red-800/40 text-[11px] font-medium">시간 중복</button>`;
+        }
+        return `<button onclick="enrollCourse('${c.id}')" class="px-3 py-1 rounded-lg bg-[#e14436] hover:bg-[#c93b2f] text-white text-[11px] font-extrabold shadow-sm transition">시간표에 추가</button>`;
+      }
+    }
+
+    /* -----------------------------------------------------------
+       6. 인터랙션 및 필터 제어
+       ----------------------------------------------------------- */
+    function switchCategory(mode) {
+      currentMode = mode;
+      previewCourse = null;
+      document.getElementById('tabBrowse').className = mode === 'browse' ? 'py-1.5 text-xs font-bold rounded-lg transition bg-[#3a3a3c] text-white shadow-sm' : 'py-1.5 text-xs font-medium rounded-lg transition text-slate-400 hover:text-white';
+      document.getElementById('tabEnroll').className = mode === 'enroll' ? 'py-1.5 text-xs font-bold rounded-lg transition bg-[#3a3a3c] text-white shadow-sm' : 'py-1.5 text-xs font-medium rounded-lg transition text-slate-400 hover:text-white';
+      document.getElementById('modeHelperTag').textContent = mode === 'browse' ? '개설 과목 둘러보기' : '수강신청';
+      renderTimetable();
+      renderCourseList();
+    }
+
+    function setCourseFilter(category, btnElement) {
+      selectedFilterCategory = category;
+      
+      const gSelect = document.getElementById('gyunhyungSelectFilter');
+      gSelect.value = 'none';
+      gSelect.className = 'bg-[#262629] text-slate-300 border border-[#343438] rounded-full px-2.5 py-1 text-[11px] font-medium outline-none cursor-pointer shrink-0 transition';
+
+      document.querySelectorAll('button.filter-chip').forEach(btn => {
+        btn.className = 'filter-chip px-2.5 py-1 rounded-full text-[11px] font-medium bg-[#262629] text-slate-300 border border-[#343438] shrink-0 transition';
+      });
+      
+      const activeClass = 'filter-chip active px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#38bdf8]/10 text-[#38bdf8] border border-[#38bdf8]/50 shrink-0 transition';
+      if (btnElement) {
+        btnElement.className = activeClass;
+      } else {
+        document.getElementById('btnFilterAll').className = activeClass;
+      }
+      
+      renderCourseList();
+    }
+
+    function setGyunhyungFilter(value) {
+      const selectEl = document.getElementById('gyunhyungSelectFilter');
+      if(value === 'none') {
+        selectEl.className = 'bg-[#262629] text-slate-300 border border-[#343438] rounded-full px-2.5 py-1 text-[11px] font-medium outline-none cursor-pointer shrink-0 transition';
+        setCourseFilter('all', document.getElementById('btnFilterAll'));
+        return;
+      }
+      selectedFilterCategory = value;
+      
+      document.querySelectorAll('button.filter-chip').forEach(btn => {
+        btn.className = 'filter-chip px-2.5 py-1 rounded-full text-[11px] font-medium bg-[#262629] text-slate-300 border border-[#343438] shrink-0 transition';
+      });
+      
+      selectEl.className = 'bg-[#38bdf8]/10 text-[#38bdf8] border border-[#38bdf8]/50 rounded-full px-2.5 py-1 text-[11px] font-bold outline-none cursor-pointer shrink-0 transition';
+      
+      renderCourseList();
+    }
+
+    function previewOnTimetable(courseId) {
+      const c = ALL_COURSES.find(item => item.id === courseId);
+      if (!c) return;
+      if (!c.dayPeriods || c.dayPeriods.length === 0) {
+        showToast('지정된 강의 시간이 없는 과목입니다.', 'info');
+        return;
+      }
+      if (previewCourse && previewCourse.id === c.id) {
+        previewCourse = null;
+        showToast('미리보기를 해제했습니다.', 'info');
+      } else {
+        previewCourse = c;
+        showToast(`'${c.name}' 위치를 상단에 표시합니다.`, 'info');
+      }
+      renderTimetable();
+    }
+
+    function enrollCourse(courseId) {
+      const course = ALL_COURSES.find(c => c.id === courseId);
+      if (!course) return;
+      if (getTotalCredits() + course.credits > 19) {
+        showToast('19학점을 초과할 수 없습니다.', 'error');
+        return;
+      }
+      const conflict = checkConflict(course);
+      if (conflict.hasConflict) {
+        showToast(`'${conflict.with}' 수업과 겹칩니다.`, 'error');
+        return;
+      }
+      enrolledCourseIds.push(course.id);
+      renderTimetable();
+      renderCourseList();
+      showToast(`'${course.name}' 추가 완료`, 'success');
+    }
+
+    function removeCourse(courseId) {
+      const course = ALL_COURSES.find(c => c.id === courseId);
+      if (!course || course.isLocked) return;
+      enrolledCourseIds = enrolledCourseIds.filter(id => id !== courseId);
+      renderTimetable();
+      renderCourseList();
+      showToast(`'${course.name}' 취소됨`, 'info');
+    }
+
+    /* -----------------------------------------------------------
+       7. PLAN B 엔진 
+       ----------------------------------------------------------- */
+    function openPlanBModal(courseId = null) {
+      if (!courseId) {
+        const elective = getEnrolledCourses().find(c => c.deptCategory === '균형교양');
+        if (elective) courseId = elective.id;
+        else { showToast('선택된 균형교양이 없습니다.', 'error'); return; }
+      }
+      
+      targetPlanBCourseId = courseId;
+      const t = ALL_COURSES.find(c => c.id === courseId);
+      document.getElementById('planBTargetTitle').innerHTML = `<span class="text-amber-400">${t.name}</span> 대체 강의 추천`;
+      
+      renderPlanBList();
+      
+      const overlay = document.getElementById('planBModalOverlay');
+      const sheet = document.getElementById('planBModalSheet');
+      
+      overlay.classList.remove('hidden');
+      void overlay.offsetWidth; 
+      
+      overlay.classList.remove('opacity-0', 'pointer-events-none');
+      overlay.classList.add('opacity-100', 'pointer-events-auto');
+      
+      sheet.classList.remove('translate-y-full');
+      sheet.classList.add('translate-y-0');
+    }
+
+    function closePlanBModal() {
+      const overlay = document.getElementById('planBModalOverlay');
+      const sheet = document.getElementById('planBModalSheet');
+      
+      overlay.classList.remove('opacity-100', 'pointer-events-auto');
+      overlay.classList.add('opacity-0', 'pointer-events-none');
+      
+      sheet.classList.remove('translate-y-0');
+      sheet.classList.add('translate-y-full');
+      
+      setTimeout(() => {
+        overlay.classList.add('hidden');
+      }, 300);
+    }
+
+    function changePlanBPreference(pref) {
+      planBPreference = pref;
+      const v = document.getElementById('planBFilterVacation');
+      const c = document.getElementById('planBFilterCompact');
+      if (pref === 'vacation') {
+        v.className = 'py-2 flex items-center justify-center gap-1.5 rounded-lg font-bold bg-[#2563eb] text-white border border-[#3b82f6] transition';
+        c.className = 'py-2 flex items-center justify-center gap-1.5 rounded-lg font-medium text-slate-400 bg-transparent transition';
+        document.getElementById('planBHelperText').innerHTML = '안내: 화·금 공강을 유지하고 기존 수업일에 스며드는 대체 균형교양을 추천합니다.';
+      } else {
+        c.className = 'py-2 flex items-center justify-center gap-1.5 rounded-lg font-bold bg-[#2563eb] text-white border border-[#3b82f6] transition';
+        v.className = 'py-2 flex items-center justify-center gap-1.5 rounded-lg font-medium text-slate-400 bg-transparent transition';
+        document.getElementById('planBHelperText').innerHTML = '안내: 우주공강을 막기 위해 오전 1~3교시 시작이나 연강 배치를 우선 추천합니다.';
+      }
+      renderPlanBList();
+    }
+
+    function renderPlanBList() {
+      const container = document.getElementById('planBRecommendations');
+      container.innerHTML = '';
+
+      const candidates = ALL_COURSES.filter(c => {
+        if (c.deptCategory !== '균형교양') return false;
+        if (enrolledCourseIds.includes(c.id)) return false;
+        const conflict = checkConflict(c, targetPlanBCourseId);
+        return !conflict.hasConflict;
+      });
+
+      const scored = candidates.map(c => {
+        let score = 0;
+        let reasons = [];
+        const days = c.dayPeriods.map(dp => dp.day);
+
+        if (planBPreference === 'vacation') {
+          if (!days.includes('화') && !days.includes('금')) { score += 50; reasons.push('화·금 공강 사수'); }
+          if (days.includes('수')) { score += 20; reasons.push('기존 수업일 매칭'); }
+          if (c.rating >= 4.5) { score += 15; reasons.push(`평점 ${c.rating.toFixed(1)}`); }
+        } else {
+          const periods = c.dayPeriods.flatMap(dp => dp.periods);
+          if (periods.includes(1) || periods.includes(2) || periods.includes(3)) { score += 45; reasons.push('오전 1~3교시 시작'); }
+          if (c.wishlist >= 50) { score += 20; reasons.push(`인기 (담은 ${c.wishlist}명)`); }
+        }
+        return { course: c, score, reasons };
+      });
+
+      scored.sort((a, b) => b.score - a.score);
+      const topPicks = scored.slice(0, 5);
+
+      if (topPicks.length === 0) {
+        container.innerHTML = `<div class="py-8 text-center text-slate-500 text-xs">대체 가능한 교양 과목이 없습니다.</div>`;
+        return;
+      }
+
+      topPicks.forEach((item, idx) => {
+        const c = item.course;
+        const card = document.createElement('div');
+        card.className = `p-3.5 rounded-xl border flex flex-col gap-2.5 bg-white text-black`; 
+        
+        if (idx === 0) card.classList.add('border-amber-400', 'shadow-[0_0_10px_rgba(251,191,36,0.3)]', 'ring-1', 'ring-amber-400');
+        else card.classList.add('border-slate-200');
+
+        card.innerHTML = `
+          <div class="flex items-start justify-between">
+            <div>
+              <div class="flex items-center gap-1.5 flex-wrap mb-1">
+                ${idx === 0 ? `<span class="bg-amber-400 text-white font-extrabold text-[10px] px-1.5 py-0.5 rounded-full shadow-sm">1순위 추천</span>` : `<span class="bg-slate-200 text-slate-600 font-bold text-[10px] px-1.5 py-0.5 rounded">${idx+1}순위</span>`}
+                <span class="text-[10px] font-bold text-blue-600 border border-blue-200 bg-blue-50 px-1.5 py-0.5 rounded">${c.area}영역</span>
+                <span class="text-sm font-extrabold text-slate-900">${c.name}</span>
+                <span class="text-[11px] text-slate-500">${c.prof} 교수</span>
+              </div>
+              <div class="text-[11px] text-slate-500 mt-1 flex items-center gap-1.5 flex-wrap">
+                <span class="font-medium"><i class="fa-regular fa-clock text-slate-400"></i> ${c.timeDisplay}</span>
+                <span>•</span>
+                <span><i class="fa-solid fa-location-dot text-slate-400"></i> ${c.room}</span>
+                <span>•</span>
+                <span class="text-amber-500 font-bold">★ ${c.rating.toFixed(1)}</span>
+                <span>•</span>
+                <span>담은 인원: ${c.wishlist}명</span>
+              </div>
+              <div class="flex items-center gap-1.5 mt-2 flex-wrap">
+                ${item.reasons.map(r => `<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-md border border-slate-200 text-slate-600 bg-slate-50 shadow-sm"><i class="fa-solid fa-check text-blue-500"></i> ${r}</span>`).join('')}
+              </div>
+            </div>
+            
+            <button onclick="applyPlanBCourse('${c.id}')" class="shrink-0 ml-3 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md transition whitespace-nowrap">
+              교체
+            </button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function applyPlanBCourse(newCourseId) {
+      if (targetPlanBCourseId) {
+        enrolledCourseIds = enrolledCourseIds.filter(id => id !== targetPlanBCourseId);
+      }
+      enrolledCourseIds.push(newCourseId);
+      closePlanBModal();
+      renderTimetable();
+      renderCourseList();
+      showToast('대체 과목으로 교체되었습니다.', 'success');
+    }
+
+    /* -----------------------------------------------------------
+       8. 토스트 기능
+       ----------------------------------------------------------- */
+    let toastTimeout = null;
+    function showToast(msg, type = 'info') {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toastMsg');
+      const icon = document.getElementById('toastIcon');
+
+      toastMsg.textContent = msg;
+      if (type === 'success') icon.className = 'fa-solid fa-circle-check text-emerald-400';
+      else if (type === 'error') icon.className = 'fa-solid fa-circle-exclamation text-rose-400';
+      else icon.className = 'fa-solid fa-circle-info text-blue-400';
+
+      toast.classList.remove('opacity-0', 'pointer-events-none');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => { toast.classList.add('opacity-0', 'pointer-events-none'); }, 2500);
+    }
+
+    /* 필터 칩 바 좌우 이동 (마우스 드래그 + 휠). 터치는 기본 스와이프 사용 */
+    function initChipBarScroll() {
+      const bar = document.getElementById('filterChipContainer');
+      if (!bar) return;
+
+      // 마우스 휠(세로) → 가로 이동
+      bar.addEventListener('wheel', (e) => {
+        if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+          bar.scrollLeft += e.deltaY;
+          e.preventDefault();
+        }
+      }, { passive: false });
+
+      // 마우스 드래그로 이동
+      let isDown = false, moved = false, startX = 0, startLeft = 0;
+      bar.addEventListener('pointerdown', (e) => {
+        if (e.pointerType !== 'mouse' || e.button !== 0) return;
+        if (e.target.closest('select')) return;
+        isDown = true; moved = false;
+        startX = e.clientX; startLeft = bar.scrollLeft;
+      });
+      window.addEventListener('pointermove', (e) => {
+        if (!isDown) return;
+        const dx = e.clientX - startX;
+        if (Math.abs(dx) > 5) { moved = true; bar.classList.add('is-dragging'); }
+        if (moved) bar.scrollLeft = startLeft - dx;
+      });
+      window.addEventListener('pointerup', () => {
+        isDown = false;
+        bar.classList.remove('is-dragging');
+      });
+      // 드래그 직후에는 칩 클릭이 실행되지 않도록 차단
+      bar.addEventListener('click', (e) => {
+        if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; }
+      }, true);
+    }
+
+    /* -----------------------------------------------------------
+       9. 초기화 및 이벤트 등록
+       ----------------------------------------------------------- */
+    window.addEventListener('DOMContentLoaded', () => {
+      renderTimetable();
+      initChipBarScroll();
+      renderCourseList();
+
+      document.getElementById('searchInput').addEventListener('input', (e) => {
+        searchQuery = e.target.value;
+        renderCourseList();
+      });
+
+      document.getElementById('btnResetAll').addEventListener('click', () => {
+        enrolledCourseIds = [];
+        previewCourse = null;
+        renderTimetable();
+        renderCourseList();
+        showToast('시간표가 완전히 비워졌습니다.', 'info');
+      });
+    });
+  </script>
+</body>
+</html>
